@@ -63,6 +63,7 @@ class WoozOfflineGame {
       this.hud.updatePortrait();
       this.multiplayer.broadcast({
         type: 'outfit',
+        senderId: this.multiplayer.myId,
         roomId: this.unitzManager.currentRoomId,
         customization: this.player.customization
       });
@@ -77,6 +78,7 @@ class WoozOfflineGame {
       this.chatBubbleManager.addBubble(this.player.name, `*${anim.toUpperCase()}*`, this.player.screenPos.x, this.player.screenPos.y, '#ffd54f');
       this.multiplayer.broadcast({
         type: 'emote',
+        senderId: this.multiplayer.myId,
         roomId: this.unitzManager.currentRoomId,
         animation: anim
       });
@@ -95,12 +97,12 @@ class WoozOfflineGame {
     this.bindCanvasInput();
     this.bindKeyboardShortcuts();
 
-    // Start background music and multiplayer on first interaction
+    // Start multiplayer immediately on page load
+    this.multiplayer.init(this.unitzManager.currentRoomId);
+
+    // Start background music on first interaction
     document.addEventListener('click', () => {
       audioEngine.startBackgroundMusic(this.unitzManager.currentRoom.defaultMusicTrack);
-      if (!this.multiplayer.isConnected) {
-        this.multiplayer.init(this.unitzManager.currentRoomId);
-      }
     }, { once: true });
 
     this.multiplayer.onPlayerChat = (name, text, worldX, worldY) => {
@@ -137,7 +139,9 @@ class WoozOfflineGame {
       this.chatBubbleManager.addBubble(this.player.name, text, this.player.screenPos.x, this.player.screenPos.y);
       this.multiplayer.broadcast({
         type: 'chat',
+        senderId: this.multiplayer.myId,
         roomId: this.unitzManager.currentRoomId,
+        name: this.player.name,
         text
       });
 
@@ -260,6 +264,7 @@ class WoozOfflineGame {
             this.player.setPath(path);
             this.multiplayer.broadcast({
               type: 'move',
+              senderId: this.multiplayer.myId,
               roomId: this.unitzManager.currentRoomId,
               gx: grid.gx,
               gy: grid.gy,
@@ -303,6 +308,7 @@ class WoozOfflineGame {
         this.player.setPath(path);
         this.multiplayer.broadcast({
           type: 'move',
+          senderId: this.multiplayer.myId,
           roomId: this.unitzManager.currentRoomId,
           gx: grid.gx,
           gy: grid.gy,

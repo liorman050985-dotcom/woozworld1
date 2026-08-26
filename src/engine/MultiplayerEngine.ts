@@ -1,10 +1,10 @@
-import Peer, { DataConnection } from 'peerjs';
+import mqtt from 'mqtt';
 import { Player } from '../entities/Player';
 import { AvatarCustomization, Direction, AvatarAnimation } from '../entities/AvatarRenderer';
 import { IsometricGrid, Point2D } from './IsometricGrid';
 
 export interface RemotePlayer {
-  peerId: string;
+  id: string;
   name: string;
   level: number;
   roomId: string;
@@ -19,76 +19,121 @@ export interface RemotePlayer {
   path: { x: number; y: number }[];
   moveSpeed: number;
   subTileProgress: number;
+  lastSeen: number;
 }
 
 export type NetworkPacket =
-  | { type: 'join'; roomId: string; name: string; level: number; gx: number; gy: number; gz: number; direction: Direction; customization: AvatarCustomization }
-  | { type: 'move'; roomId: string; gx: number; gy: number; path: { x: number; y: number }[]; direction: Direction }
-  | { type: 'chat'; roomId: string; text: string }
-  | { type: 'emote'; roomId: string; animation: AvatarAnimation }
-  | { type: 'outfit'; roomId: string; customization: AvatarCustomization }
-  | { type: 'leave'; roomId: string };
+  | { type: 'join'; senderId: string; roomId: string; name: string; level: number; gx: number; gy: number; gz: number; direction: Direction; customization: AvatarCustomization }
+  | { type: 'heartbeat'; senderId: string; roomId: string; name: string; level: number; gx: number; gy: number; gz: number; direction: Direction; customization: AvatarCustomization; animation: AvatarAnimation }
+  | { type: 'move'; senderId: string; roomId: string; gx: number; gy: number; path: { x: number; y: number }[]; direction: Direction }
+  | { type: 'chat'; senderId: string; roomId: string; name: string; text: string }
+  | { type: 'emote'; senderId: string; roomId: string; animation: AvatarAnimation }
+  | { type: 'outfit'; senderId: string; roomId: string; customization: AvatarCustomization }
+  | { type: 'leave'; senderId: string; roomId: string };
 
 export class MultiplayerEngine {
-  public peer: Peer | null = null;
-  public myPeerId: string = '';
+  public myId: string = '';
   public isConnected: boolean = false;
   public remotePlayers: Map<string, RemotePlayer> = new Map();
-  private connections: Map<string, DataConnection> = new Map();
   private currentRoomId: string = 'central_plaza';
   private player: Player;
+  private mqttClient: mqtt.MqttClient | null = null;
+  private localChannel: BroadcastChannel | null = null;
+  private heartbeatInterval: number | null = null;
 
   public onPlayerChat: (name: string, text: string, worldX: number, worldY: number) => void = () => {};
   public onConnectionCountChange: (count: number) => void = () => {};
 
   constructor(player: Player) {
     this.player = player;
+    this.myId = 'wzw_' + Math.random().toString(36).substring(2, 9);
   }
 
   public init(roomId: string = 'central_plaza') {
     this.currentRoomId = roomId;
 
-    const randomSuffix = Math.random().toString(36).substring(2, 7);
-    this.myPeerId = `wzw_${this.player.name.toLowerCase().replace(/[^a-z0-9]/g, '')}_${randomSuffix}`;
-
+    // 1. Local BroadcastChannel for instant local multi-tab sync
     try {
-      // Connect to global PeerJS WebRTC cloud relay (Free, public, zero-setup)
-      this.peer = new Peer(this.myPeerId, {
-        debug: 1
+      if ('BroadcastChannel' in window) {
+        this.localChannel = new BroadcastChannel('woozworld_global_mesh');
+        this.localChannel.onmessage = (event) => {
+          this.handlePacket(event.data);
+        };
+      }
+    } catch (e) {
+      console.warn('BroadcastChannel unavailable:', e);
+    }
+
+    // 2. Global Public Cloud WebSocket Broker (EMQX Public WSS)
+    try {
+      const brokerUrl = 'wss://broker.emqx.io:8084/mqtt';
+      this.mqttClient = mqtt.connect(brokerUrl, {
+        clientId: this.myId,
+        clean: true,
+        reconnectPeriod: 3000
       });
 
-      this.peer.on('open', (id) => {
-        this.myPeerId = id;
+      this.mqttClient.on('connect', () => {
         this.isConnected = true;
-        this.joinRoomSwarm(this.currentRoomId);
+        this.subscribeToRoom(this.currentRoomId);
+        this.sendJoin();
       });
 
-      this.peer.on('connection', (conn) => {
-        this.setupConnection(conn);
+      this.mqttClient.on('message', (topic, message) => {
+        try {
+          const packet: NetworkPacket = JSON.parse(message.toString());
+          this.handlePacket(packet);
+        } catch (e) {}
       });
 
-      this.peer.on('error', (err) => {
-        console.warn('Multiplayer Peer notice:', err.type);
+      this.mqttClient.on('error', (err) => {
+        console.warn('MQTT Connection Notice:', err);
       });
     } catch (e) {
-      console.warn('WebRTC init fallback:', e);
+      console.warn('MQTT Init fallback:', e);
+    }
+
+    // 3. Heartbeat loop every 2 seconds
+    if (this.heartbeatInterval) window.clearInterval(this.heartbeatInterval);
+    this.heartbeatInterval = window.setInterval(() => {
+      this.sendHeartbeat();
+      this.cleanupStalePlayers();
+    }, 2000);
+
+    // Send initial join
+    this.sendJoin();
+  }
+
+  private subscribeToRoom(roomId: string) {
+    if (this.mqttClient && this.mqttClient.connected) {
+      const topic = `woozworld/rooms/${roomId}`;
+      this.mqttClient.subscribe(topic, { qos: 0 });
+    }
+  }
+
+  private unsubscribeFromRoom(roomId: string) {
+    if (this.mqttClient && this.mqttClient.connected) {
+      const topic = `woozworld/rooms/${roomId}`;
+      this.mqttClient.unsubscribe(topic);
     }
   }
 
   public changeRoom(newRoomId: string) {
-    this.broadcast({ type: 'leave', roomId: this.currentRoomId });
+    this.broadcast({ type: 'leave', senderId: this.myId, roomId: this.currentRoomId });
+    this.unsubscribeFromRoom(this.currentRoomId);
+
     this.currentRoomId = newRoomId;
+    this.remotePlayers.clear();
+    this.onConnectionCountChange(1);
 
-    // Filter remote players to only those in current room
-    for (const [id, rPlayer] of this.remotePlayers.entries()) {
-      if (rPlayer.roomId !== newRoomId) {
-        this.remotePlayers.delete(id);
-      }
-    }
-    this.onConnectionCountChange(this.remotePlayers.size + 1);
+    this.subscribeToRoom(this.currentRoomId);
+    this.sendJoin();
+  }
 
+  private sendJoin() {
     this.broadcast({
       type: 'join',
+      senderId: this.myId,
       roomId: this.currentRoomId,
       name: this.player.name,
       level: this.player.level,
@@ -100,77 +145,50 @@ export class MultiplayerEngine {
     });
   }
 
-  private joinRoomSwarm(roomId: string) {
-    // Broadcast join to existing peers
+  private sendHeartbeat() {
     this.broadcast({
-      type: 'join',
-      roomId,
+      type: 'heartbeat',
+      senderId: this.myId,
+      roomId: this.currentRoomId,
       name: this.player.name,
       level: this.player.level,
       gx: this.player.gx,
       gy: this.player.gy,
       gz: this.player.gz,
       direction: this.player.direction,
-      customization: this.player.customization
-    });
-
-    // Auto-discover room peers via lobby broadcast channel if available in same browser/tab
-    try {
-      if ('BroadcastChannel' in window) {
-        const bc = new BroadcastChannel(`wooz_swarm_${roomId}`);
-        bc.postMessage({ type: 'announce', peerId: this.myPeerId });
-        bc.onmessage = (e) => {
-          if (e.data?.type === 'announce' && e.data.peerId !== this.myPeerId) {
-            this.connectToPeer(e.data.peerId);
-          }
-        };
-      }
-    } catch (e) {}
-  }
-
-  public connectToPeer(peerId: string) {
-    if (!this.peer || this.connections.has(peerId) || peerId === this.myPeerId) return;
-
-    const conn = this.peer.connect(peerId, { reliable: true });
-    this.setupConnection(conn);
-  }
-
-  private setupConnection(conn: DataConnection) {
-    conn.on('open', () => {
-      this.connections.set(conn.peer, conn);
-
-      // Send my state to the new peer
-      conn.send({
-        type: 'join',
-        roomId: this.currentRoomId,
-        name: this.player.name,
-        level: this.player.level,
-        gx: this.player.gx,
-        gy: this.player.gy,
-        gz: this.player.gz,
-        direction: this.player.direction,
-        customization: this.player.customization
-      } as NetworkPacket);
-    });
-
-    conn.on('data', (data) => {
-      this.handlePacket(conn.peer, data as NetworkPacket);
-    });
-
-    conn.on('close', () => {
-      this.connections.delete(conn.peer);
-      this.remotePlayers.delete(conn.peer);
-      this.onConnectionCountChange(this.remotePlayers.size + 1);
+      customization: this.player.customization,
+      animation: this.player.animation
     });
   }
 
-  private handlePacket(senderPeerId: string, packet: NetworkPacket) {
-    if (!packet || typeof packet !== 'object') return;
+  public broadcast(packet: NetworkPacket) {
+    // 1. Broadcast locally
+    if (this.localChannel) {
+      try {
+        this.localChannel.postMessage(packet);
+      } catch (e) {}
+    }
 
-    if (packet.type === 'join') {
-      if (packet.roomId === this.currentRoomId) {
-        const rPlayer: RemotePlayer = {
-          peerId: senderPeerId,
+    // 2. Broadcast via MQTT Cloud WebSocket
+    if (this.mqttClient && this.mqttClient.connected) {
+      const topic = `woozworld/rooms/${packet.roomId}`;
+      try {
+        this.mqttClient.publish(topic, JSON.stringify(packet), { qos: 0 });
+      } catch (e) {}
+    }
+  }
+
+  private handlePacket(packet: NetworkPacket) {
+    if (!packet || typeof packet !== 'object' || packet.senderId === this.myId) return;
+    if (packet.roomId !== this.currentRoomId) return;
+
+    const now = Date.now();
+
+    if (packet.type === 'join' || packet.type === 'heartbeat') {
+      let rPlayer = this.remotePlayers.get(packet.senderId);
+      if (!rPlayer) {
+        rPlayer = {
+          id: packet.senderId,
           name: packet.name,
           level: packet.level,
           roomId: packet.roomId,
@@ -184,47 +202,68 @@ export class MultiplayerEngine {
           customization: packet.customization,
           path: [],
           moveSpeed: 3.5,
-          subTileProgress: 0
+          subTileProgress: 0,
+          lastSeen: now
         };
-        this.remotePlayers.set(senderPeerId, rPlayer);
+        this.remotePlayers.set(packet.senderId, rPlayer);
         this.onConnectionCountChange(this.remotePlayers.size + 1);
+
+        // If it was a join, respond with our heartbeat so they register us immediately
+        if (packet.type === 'join') {
+          this.sendHeartbeat();
+        }
+      } else {
+        rPlayer.name = packet.name;
+        rPlayer.level = packet.level;
+        rPlayer.customization = packet.customization;
+        rPlayer.lastSeen = now;
+        if (packet.type === 'heartbeat' && rPlayer.path.length === 0) {
+          rPlayer.animation = packet.animation;
+        }
       }
     } else if (packet.type === 'move') {
-      const rPlayer = this.remotePlayers.get(senderPeerId);
-      if (rPlayer && packet.roomId === this.currentRoomId) {
+      const rPlayer = this.remotePlayers.get(packet.senderId);
+      if (rPlayer) {
         rPlayer.path = packet.path;
         rPlayer.direction = packet.direction;
         rPlayer.subTileProgress = 0;
         rPlayer.animation = 'walk';
+        rPlayer.lastSeen = now;
       }
     } else if (packet.type === 'chat') {
-      const rPlayer = this.remotePlayers.get(senderPeerId);
-      if (rPlayer && packet.roomId === this.currentRoomId) {
-        this.onPlayerChat(rPlayer.name, packet.text, rPlayer.screenPos.x, rPlayer.screenPos.y);
-      }
+      const rPlayer = this.remotePlayers.get(packet.senderId);
+      const worldPos = rPlayer ? rPlayer.screenPos : IsometricGrid.gridToScreen(5, 5);
+      this.onPlayerChat(packet.name, packet.text, worldPos.x, worldPos.y);
+      if (rPlayer) rPlayer.lastSeen = now;
     } else if (packet.type === 'emote') {
-      const rPlayer = this.remotePlayers.get(senderPeerId);
-      if (rPlayer && packet.roomId === this.currentRoomId) {
+      const rPlayer = this.remotePlayers.get(packet.senderId);
+      if (rPlayer) {
         rPlayer.animation = packet.animation;
+        rPlayer.lastSeen = now;
       }
     } else if (packet.type === 'outfit') {
-      const rPlayer = this.remotePlayers.get(senderPeerId);
-      if (rPlayer && packet.roomId === this.currentRoomId) {
+      const rPlayer = this.remotePlayers.get(packet.senderId);
+      if (rPlayer) {
         rPlayer.customization = packet.customization;
+        rPlayer.lastSeen = now;
       }
     } else if (packet.type === 'leave') {
-      this.remotePlayers.delete(senderPeerId);
+      this.remotePlayers.delete(packet.senderId);
       this.onConnectionCountChange(this.remotePlayers.size + 1);
     }
   }
 
-  public broadcast(packet: NetworkPacket) {
-    for (const conn of this.connections.values()) {
-      if (conn.open) {
-        try {
-          conn.send(packet);
-        } catch (e) {}
+  private cleanupStalePlayers() {
+    const now = Date.now();
+    let changed = false;
+    for (const [id, rPlayer] of this.remotePlayers.entries()) {
+      if (now - rPlayer.lastSeen > 7000) {
+        this.remotePlayers.delete(id);
+        changed = true;
       }
+    }
+    if (changed) {
+      this.onConnectionCountChange(this.remotePlayers.size + 1);
     }
   }
 
@@ -235,6 +274,18 @@ export class MultiplayerEngine {
       if (rPlayer.path.length > 0) {
         rPlayer.animation = 'walk';
         const target = rPlayer.path[0];
+        const dx = target.x - rPlayer.gx;
+        const dy = target.y - rPlayer.gy;
+
+        if (dx > 0 && dy === 0) rPlayer.direction = 0;
+        else if (dx > 0 && dy > 0) rPlayer.direction = 1;
+        else if (dx === 0 && dy > 0) rPlayer.direction = 2;
+        else if (dx < 0 && dy > 0) rPlayer.direction = 3;
+        else if (dx < 0 && dy === 0) rPlayer.direction = 4;
+        else if (dx < 0 && dy < 0) rPlayer.direction = 5;
+        else if (dx === 0 && dy < 0) rPlayer.direction = 6;
+        else if (dx > 0 && dy < 0) rPlayer.direction = 7;
+
         rPlayer.subTileProgress += rPlayer.moveSpeed * deltaTime;
 
         if (rPlayer.subTileProgress >= 1.0) {
