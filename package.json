@@ -13,8 +13,10 @@
     "vite": "^5.2.11"
   },
   "dependencies": {
+    "@types/three": "^0.185.4",
     "canvas-confetti": "^1.9.3",
     "mqtt": "^5.15.2",
-    "peerjs": "^1.5.5"
+    "peerjs": "^1.5.5",
+    "three": "^0.185.1"
   }
 }

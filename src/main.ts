@@ -1,7 +1,3 @@
-import './styles/main.css';
-import { Camera } from './engine/Camera';
-import { IsometricGrid } from './engine/IsometricGrid';
-import { Pathfinding } from './engine/Pathfinding';
 import { Player } from './entities/Player';
 import { UnitzManager } from './world/UnitzManager';
 import { RetroHUD } from './ui/RetroHUD';
@@ -18,16 +14,15 @@ import { ProfileModal } from './ui/ProfileModal';
 import { AvatarContextMenu } from './ui/AvatarContextMenu';
 import { TradeModal } from './ui/TradeModal';
 import { MultiplayerEngine } from './engine/MultiplayerEngine';
+import { ThreeWorldEngine } from './engine/ThreeWorldEngine';
+import { Pathfinding } from './engine/Pathfinding';
 import { audioEngine } from './engine/AudioEngine';
-import { FURNITURE_CATALOG } from './data/FurnitureItems';
 
 class WoozOfflineGame {
-  private canvas: HTMLCanvasElement;
-  private ctx: CanvasRenderingContext2D;
-  private camera: Camera;
   private player: Player;
   private unitzManager: UnitzManager;
   private multiplayer: MultiplayerEngine;
+  private threeEngine: ThreeWorldEngine;
   private hud: RetroHUD;
   private wardrobeModal: WardrobeModal;
   private shopModal: ShopModal;
@@ -46,23 +41,25 @@ class WoozOfflineGame {
 
   constructor() {
     const canvasContainer = document.getElementById('game-canvas-container')!;
-    this.canvas = document.createElement('canvas');
-    this.canvas.id = 'game-canvas';
-    canvasContainer.appendChild(this.canvas);
-    this.ctx = this.canvas.getContext('2d')!;
+    canvasContainer.innerHTML = ''; // Clear 2D canvas
 
-    this.resizeCanvas();
-    window.addEventListener('resize', () => this.resizeCanvas());
-
-    this.camera = new Camera();
     this.player = new Player();
     this.unitzManager = new UnitzManager();
     this.chatBubbleManager = new ChatBubbleManager();
     this.multiplayer = new MultiplayerEngine(this.player);
 
+    // Initialize 3D WebGL World Engine
+    this.threeEngine = new ThreeWorldEngine(
+      canvasContainer,
+      this.player,
+      this.unitzManager,
+      this.multiplayer
+    );
+
     // Modals & UI
     this.wardrobeModal = new WardrobeModal(this.player, () => {
       this.hud.updatePortrait();
+      this.threeEngine.rebuildRoom3D();
       this.multiplayer.broadcast({
         type: 'outfit',
         senderId: this.multiplayer.myId,
@@ -70,21 +67,26 @@ class WoozOfflineGame {
         customization: this.player.customization
       });
     });
+
     this.shopModal = new ShopModal(this.player);
+
     this.builderUI = new UnitzBuilderUI(this.unitzManager);
     this.builderUI.onGoToPersonalUnitz = () => {
       this.unitzManager.switchRoom('personal_penthouse');
       this.hud.updateRoomTitle(this.unitzManager.currentRoom.name);
       this.multiplayer.changeRoom(this.unitzManager.currentRoomId);
+      this.threeEngine.rebuildRoom3D();
       this.builderUI.render();
     };
 
     this.navigatorModal = new WorldNavigator(this.unitzManager, this.player, () => {
       this.hud.updateRoomTitle(this.unitzManager.currentRoom.name);
       this.multiplayer.changeRoom(this.unitzManager.currentRoomId);
+      this.threeEngine.rebuildRoom3D();
     });
+
     this.emoteWheel = new EmoteWheel(this.player, (anim) => {
-      this.chatBubbleManager.addBubble(this.player.id, this.player.name, `*${anim.toUpperCase()}*`, this.player.screenPos.x, this.player.screenPos.y, '#ffd54f', true);
+      this.chatBubbleManager.addBubble(this.player.id, this.player.name, `*${anim.toUpperCase()}*`, 0, 0, '#ffd54f', true);
       this.multiplayer.broadcast({
         type: 'emote',
         senderId: this.multiplayer.myId,
@@ -92,11 +94,14 @@ class WoozOfflineGame {
         animation: anim
       });
     });
+
     this.dialogueBox = new DialogueBox();
     this.fashionMinigame = new FashionMinigame(this.player);
     this.triviaMinigame = new TriviaMinigame(this.player);
+
     this.profileModal = new ProfileModal(this.player, (newName) => {
       this.hud.updatePlayerName(newName);
+      this.threeEngine.rebuildRoom3D();
       this.multiplayer.broadcast({
         type: 'join',
         senderId: this.multiplayer.myId,
@@ -110,6 +115,7 @@ class WoozOfflineGame {
         customization: this.player.customization
       });
     });
+
     this.contextMenu = new AvatarContextMenu();
     this.tradeModal = new TradeModal(this.player);
 
@@ -146,7 +152,7 @@ class WoozOfflineGame {
     this.hud.render(hudContainer);
 
     this.bindHUDCallbacks();
-    this.bindCanvasInput();
+    this.bind3DInputs();
     this.bindKeyboardShortcuts();
 
     // Start multiplayer immediately on page load
@@ -184,7 +190,7 @@ class WoozOfflineGame {
       alert('The trade request was declined.');
     };
 
-    this.multiplayer.onTradeUpdated = (senderId, offer) => {
+    this.multiplayer.onTradeUpdated = (_senderId, offer) => {
       this.tradeModal.updateTheirOffer(offer);
     };
 
@@ -208,30 +214,27 @@ class WoozOfflineGame {
 
     this.multiplayer.onConnectionCountChange = (count) => {
       const roomTitle = this.unitzManager.currentRoom.name;
-      this.hud.updateRoomTitle(`${roomTitle} (🟢 ${count} Online)`);
+      this.hud.updateRoomTitle(`${roomTitle} (🟢 ${count} Online in 3D)`);
     };
-
-    // Initial camera position centered on player
-    this.camera.follow(this.player.screenPos.x, this.player.screenPos.y, false);
 
     // Start Game Loop
     requestAnimationFrame((t) => this.gameLoop(t));
   }
 
-  private resizeCanvas() {
-    this.canvas.width = window.innerWidth;
-    this.canvas.height = window.innerHeight;
-  }
-
   private bindHUDCallbacks() {
     this.hud.onOpenWardrobe = () => this.wardrobeModal.open();
-    this.hud.onOpenColorWheel = () => this.wardrobeModal.open();
-    this.hud.onOpenProfile = () => this.profileModal.open();
     this.hud.onOpenShop = () => this.shopModal.open();
     this.hud.onOpenNavigator = () => this.navigatorModal.open();
-    this.hud.onToggleBuildMode = () => this.builderUI.toggle();
+    this.hud.onToggleBuildMode = () => {
+      this.unitzManager.isBuildMode = !this.unitzManager.isBuildMode;
+      this.builderUI.toggle();
+    };
     this.hud.onToggleEmotes = () => this.emoteWheel.toggle();
+    this.hud.onOpenProfile = () => this.profileModal.open();
+    this.hud.onOpenColorWheel = () => this.wardrobeModal.open();
+
     this.hud.onNameChanged = (newName) => {
+      this.threeEngine.rebuildRoom3D();
       this.multiplayer.broadcast({
         type: 'join',
         senderId: this.multiplayer.myId,
@@ -247,7 +250,7 @@ class WoozOfflineGame {
     };
 
     this.hud.onSendChatMessage = (text) => {
-      this.chatBubbleManager.addBubble(this.player.id, this.player.name, text, this.player.screenPos.x, this.player.screenPos.y, undefined, true);
+      this.chatBubbleManager.addBubble(this.player.id, this.player.name, text, 0, 0, undefined, true);
       this.multiplayer.broadcast({
         type: 'chat',
         senderId: this.multiplayer.myId,
@@ -255,274 +258,35 @@ class WoozOfflineGame {
         name: this.player.name,
         text
       });
-
-      // Check if nearby NPCs should react
-      for (const npc of this.unitzManager.currentRoom.npcs) {
-        const dist = Math.hypot(npc.gx - this.player.gx, npc.gy - this.player.gy);
-        if (dist <= 3 && Math.random() > 0.4) {
-          window.setTimeout(() => {
-            npc.speak(`@${this.player.name} Love it! ✨`);
-            this.chatBubbleManager.addBubble(npc.id, npc.name, `@${this.player.name} Love it! ✨`, npc.screenPos.x, npc.screenPos.y, '#f8bbd0');
-          }, 1000);
-        }
-      }
     };
   }
 
-  private bindCanvasInput() {
-    this.canvas.addEventListener('mousemove', (e) => {
-      const world = this.camera.screenToWorld(e.clientX, e.clientY, this.canvas.width, this.canvas.height);
-      const grid = IsometricGrid.screenToGrid(world.x, world.y);
-      if (
-        grid.gx >= 0 &&
-        grid.gx < this.unitzManager.currentRoom.width &&
-        grid.gy >= 0 &&
-        grid.gy < this.unitzManager.currentRoom.height
-      ) {
-        this.unitzManager.hoveredTile = grid;
-      } else {
-        this.unitzManager.hoveredTile = null;
-      }
-
-      // Check if mouse is hovering over ANY avatar body (head, chest, legs, name tag, wings)
-      let isHoveringAvatar = false;
-      for (const rPlayer of this.multiplayer.remotePlayers.values()) {
-        const dx = Math.abs(world.x - rPlayer.screenPos.x);
-        const dy = world.y - rPlayer.screenPos.y;
-        if (dx <= 45 && dy >= -115 && dy <= 25) {
-          isHoveringAvatar = true;
-          break;
-        }
-      }
-      if (!isHoveringAvatar) {
-        for (const npc of this.unitzManager.currentRoom.npcs) {
-          const dx = Math.abs(world.x - npc.screenPos.x);
-          const dy = world.y - npc.screenPos.y;
-          if (dx <= 45 && dy >= -115 && dy <= 25) {
-            isHoveringAvatar = true;
-            break;
-          }
-        }
-      }
-      if (!isHoveringAvatar) {
-        const dx = Math.abs(world.x - this.player.screenPos.x);
-        const dy = world.y - this.player.screenPos.y;
-        if (dx <= 45 && dy >= -115 && dy <= 25) {
-          isHoveringAvatar = true;
-        }
-      }
-      this.canvas.style.cursor = isHoveringAvatar ? 'pointer' : (this.unitzManager.isBuildMode ? 'crosshair' : 'default');
-    });
-
-    this.canvas.addEventListener('click', (e) => {
-      const world = this.camera.screenToWorld(e.clientX, e.clientY, this.canvas.width, this.canvas.height);
-      const grid = IsometricGrid.screenToGrid(world.x, world.y);
-
-      // BUILD MODE LOGIC
+  private bind3DInputs() {
+    // 1. Walking / Tile Interaction
+    this.threeEngine.onTileClicked = (gx, gy) => {
+      // Build Mode Placement
       if (this.unitzManager.isBuildMode) {
-        if (
-          grid.gx < 0 ||
-          grid.gx >= this.unitzManager.currentRoom.width ||
-          grid.gy < 0 ||
-          grid.gy >= this.unitzManager.currentRoom.height
-        ) {
-          return;
-        }
         if (this.unitzManager.selectedBuildDefId) {
-          // Place furniture
-          const placed = this.unitzManager.placeFurniture(this.unitzManager.selectedBuildDefId, grid.gx, grid.gy);
+          const placed = this.unitzManager.placeFurniture(this.unitzManager.selectedBuildDefId, gx, gy);
           if (placed) {
             audioEngine.playFurnitureSnap();
             this.builderUI.render();
+            this.threeEngine.rebuildRoom3D();
           }
         } else if (this.unitzManager.paintTileType) {
-          // Paint floor tile
           audioEngine.playPop();
-          this.unitzManager.paintTile(grid.gx, grid.gy, this.unitzManager.paintTileType);
-        } else {
-          // Select placed furniture to rotate / delete / elevate
-          const clickedF = this.unitzManager.getFurnitureAt(grid.gx, grid.gy);
-          this.unitzManager.selectedPlacedFurniture = clickedF;
-          this.builderUI.render();
+          this.unitzManager.paintTile(gx, gy, this.unitzManager.paintTileType);
+          this.threeEngine.rebuildRoom3D();
         }
         return;
       }
 
-      // REGULAR GAMEPLAY MODE LOGIC
-      // 1. Check Full-Body Hitbox for REAL REMOTE PLAYERS (Head, face, hair, wings, body, legs, feet, name tag)
-      let hitRemotePlayer: any = null;
-      for (const rPlayer of this.multiplayer.remotePlayers.values()) {
-        const dx = Math.abs(world.x - rPlayer.screenPos.x);
-        const dy = world.y - rPlayer.screenPos.y;
-        if (dx <= 45 && dy >= -115 && dy <= 25) {
-          hitRemotePlayer = rPlayer;
-          break;
-        }
-      }
-
-      if (hitRemotePlayer) {
-        audioEngine.playClick();
-        this.contextMenu.openFor(
-          { name: hitRemotePlayer.name, level: hitRemotePlayer.level, isPlayer: true },
-          e.clientX,
-          e.clientY,
-          (action, name) => {
-            if (action === 'profile') {
-              audioEngine.playFanfare();
-              this.profileModal.open({
-                name: hitRemotePlayer.name,
-                level: hitRemotePlayer.level,
-                customization: hitRemotePlayer.customization,
-                isSelf: false,
-                status: "Live Resident in Woozworld! 🌟",
-                wooz: 999999,
-                beex: 999999
-              });
-            } else if (action === 'whisper') {
-              const msg = prompt(`Send a private whisper message to ${hitRemotePlayer.name}:`);
-              if (msg && msg.trim()) {
-                this.chatBubbleManager.addBubble(this.player.id, this.player.name, `*whispers to ${hitRemotePlayer.name}* ${msg.trim()}`, this.player.screenPos.x, this.player.screenPos.y, '#e1bee7', true);
-                this.multiplayer.broadcast({
-                  type: 'chat',
-                  senderId: this.multiplayer.myId,
-                  roomId: this.unitzManager.currentRoomId,
-                  name: this.player.name,
-                  text: `*whispers to ${hitRemotePlayer.name}* ${msg.trim()}`
-                });
-              }
-            } else if (action === 'wave') {
-              this.player.setAnimation('wave');
-              this.chatBubbleManager.addBubble(this.player.id, this.player.name, `👋 Waves at ${hitRemotePlayer.name}!`, this.player.screenPos.x, this.player.screenPos.y, '#ffd54f', true);
-              this.multiplayer.broadcast({
-                type: 'emote',
-                senderId: this.multiplayer.myId,
-                roomId: this.unitzManager.currentRoomId,
-                animation: 'wave'
-              });
-            } else if (action === 'trade') {
-              audioEngine.playPop();
-              this.chatBubbleManager.addBubble(this.player.id, this.player.name, `🤝 Sent trade request to ${hitRemotePlayer.name}!`, this.player.screenPos.x, this.player.screenPos.y, '#ffe082', true);
-              this.multiplayer.broadcast({
-                type: 'trade_req',
-                senderId: this.multiplayer.myId,
-                targetId: hitRemotePlayer.id,
-                senderName: this.player.name,
-                roomId: this.unitzManager.currentRoomId
-              });
-            }
-          }
-        );
-        return;
-      }
-
-      // 2. Check Full-Body Hitbox for NPCs (Head, body, name tag)
-      let hitNPC: any = null;
-      for (const npc of this.unitzManager.currentRoom.npcs) {
-        const dx = Math.abs(world.x - npc.screenPos.x);
-        const dy = world.y - npc.screenPos.y;
-        if (dx <= 45 && dy >= -115 && dy <= 25) {
-          hitNPC = npc;
-          break;
-        }
-      }
-
-      if (hitNPC) {
-        audioEngine.playClick();
-        this.contextMenu.openFor(
-          { name: hitNPC.name, role: hitNPC.role },
-          e.clientX,
-          e.clientY,
-          (action, name) => {
-            if (action === 'profile' || action === 'trade') {
-              if (hitNPC.dialogueTreeId) {
-                this.dialogueBox.openDialogue(hitNPC.dialogueTreeId, (act) => {
-                  if (act === 'startFashion') this.fashionMinigame.start(() => {});
-                  else if (act === 'startTrivia') this.triviaMinigame.start(() => {});
-                  else if (act === 'changeMusic') {
-                    const tName = audioEngine.nextTrack();
-                    this.hud.updateRoomTitle(`${this.unitzManager.currentRoom.name} [♫ ${tName.split(' ')[0]}]`);
-                  }
-                });
-              } else {
-                hitNPC.speak(`Hey! Nice to meet you! ✨`);
-              }
-            } else if (action === 'whisper') {
-              hitNPC.speak(`*whispers to ${this.player.name}* You rock! 💖`);
-            } else if (action === 'wave') {
-              this.player.setAnimation('wave');
-              hitNPC.speak(`*waves back happily* 👋`);
-            } else if (action === 'friend') {
-              audioEngine.playEmoteChime();
-              hitNPC.speak(`Added to your Besties list! ⭐`);
-            }
-          }
-        );
-        return;
-      }
-
-      if (
-        grid.gx < 0 ||
-        grid.gx >= this.unitzManager.currentRoom.width ||
-        grid.gy < 0 ||
-        grid.gy >= this.unitzManager.currentRoom.height
-      ) {
-        return;
-      }
-
-      // 2. Check if clicked interactive furniture
-      const clickedFurn = this.unitzManager.getFurnitureAt(grid.gx, grid.gy);
-      if (clickedFurn) {
-        const def = FURNITURE_CATALOG.find(d => d.id === clickedFurn.defId);
-        if (def && def.isSeat) {
-          // Walk to chair and sit down
-          const path = Pathfinding.findPath(
-            this.player.gx,
-            this.player.gy,
-            grid.gx,
-            grid.gy,
-            (x, y) => this.unitzManager.isTileWalkable(x, y),
-            this.unitzManager.currentRoom.width,
-            this.unitzManager.currentRoom.height
-          );
-          if (path.length > 0) {
-            this.player.setPath(path);
-            this.multiplayer.broadcast({
-              type: 'move',
-              senderId: this.multiplayer.myId,
-              roomId: this.unitzManager.currentRoomId,
-              gx: grid.gx,
-              gy: grid.gy,
-              path,
-              direction: this.player.direction
-            });
-          } else {
-            this.player.sit(clickedFurn.instanceId, { x: grid.gx, y: grid.gy }, def.seatOffset?.z || 8);
-          }
-          return;
-        } else if (def && def.interactionType === 'toggleLight') {
-          clickedFurn.isLit = clickedFurn.isLit === false ? true : false;
-          audioEngine.playClick();
-          return;
-        } else if (def && def.interactionType === 'playMusic') {
-          const name = audioEngine.nextTrack();
-          audioEngine.playPop();
-          this.chatBubbleManager.addBubble(this.player.id, this.player.name, `♫ Now Playing: ${name}`, this.player.screenPos.x, this.player.screenPos.y, undefined, true);
-          return;
-        } else if (def && def.interactionType === 'arcade') {
-          this.triviaMinigame.start(() => {});
-          return;
-        } else if (def && def.interactionType === 'runway') {
-          this.fashionMinigame.start(() => {});
-          return;
-        }
-      }
-
-      // 3. Normal Walk Pathfinding
+      // Normal Walking
       const path = Pathfinding.findPath(
-        this.player.gx,
-        this.player.gy,
-        grid.gx,
-        grid.gy,
+        Math.round(this.player.gx),
+        Math.round(this.player.gy),
+        gx,
+        gy,
         (x, y) => this.unitzManager.isTileWalkable(x, y),
         this.unitzManager.currentRoom.width,
         this.unitzManager.currentRoom.height
@@ -530,52 +294,96 @@ class WoozOfflineGame {
 
       if (path.length > 0) {
         this.player.setPath(path);
+        audioEngine.playStep();
         this.multiplayer.broadcast({
           type: 'move',
           senderId: this.multiplayer.myId,
           roomId: this.unitzManager.currentRoomId,
-          gx: grid.gx,
-          gy: grid.gy,
+          gx,
+          gy,
           path,
           direction: this.player.direction
         });
       }
-    });
+    };
 
-    // Zoom wheel
-    this.canvas.addEventListener('wheel', (e) => {
-      e.preventDefault();
-      const zoomDelta = e.deltaY < 0 ? 0.1 : -0.1;
-      this.camera.setZoom(this.camera.targetZoom + zoomDelta);
-    }, { passive: false });
+    // 2. Click Real Multiplayer Player in 3D
+    this.threeEngine.onPlayerClicked = (rPlayer, clientX, clientY) => {
+      audioEngine.playClick();
+      this.contextMenu.openFor(
+        { name: rPlayer.name, level: rPlayer.level, isPlayer: true },
+        clientX,
+        clientY,
+        (action) => {
+          if (action === 'profile') {
+            audioEngine.playFanfare();
+            this.profileModal.open({
+              name: rPlayer.name,
+              level: rPlayer.level,
+              customization: rPlayer.customization,
+              isSelf: false,
+              status: "Live Resident in 3D Woozworld! 🌟",
+              wooz: 999999,
+              beex: 999999
+            });
+          } else if (action === 'whisper') {
+            const msg = prompt(`Send a private whisper message to ${rPlayer.name}:`);
+            if (msg && msg.trim()) {
+              this.chatBubbleManager.addBubble(this.player.id, this.player.name, `*whispers to ${rPlayer.name}* ${msg.trim()}`, 0, 0, '#e1bee7', true);
+              this.multiplayer.broadcast({
+                type: 'chat',
+                senderId: this.multiplayer.myId,
+                roomId: this.unitzManager.currentRoomId,
+                name: this.player.name,
+                text: `*whispers to ${rPlayer.name}* ${msg.trim()}`
+              });
+            }
+          } else if (action === 'wave') {
+            this.player.setAnimation('wave');
+            this.chatBubbleManager.addBubble(this.player.id, this.player.name, `👋 Waves at ${rPlayer.name}!`, 0, 0, '#ffd54f', true);
+            this.multiplayer.broadcast({
+              type: 'emote',
+              senderId: this.multiplayer.myId,
+              roomId: this.unitzManager.currentRoomId,
+              animation: 'wave'
+            });
+          } else if (action === 'friend') {
+            audioEngine.playEmoteChime();
+            this.chatBubbleManager.addBubble(this.player.id, this.player.name, `⭐ Added ${rPlayer.name} to Besties list!`, 0, 0, '#b2ebf2', true);
+          } else if (action === 'trade') {
+            audioEngine.playPop();
+            this.chatBubbleManager.addBubble(this.player.id, this.player.name, `🤝 Sent trade request to ${rPlayer.name}!`, 0, 0, '#ffe082', true);
+            this.multiplayer.broadcast({
+              type: 'trade_req',
+              senderId: this.multiplayer.myId,
+              targetId: rPlayer.id,
+              senderName: this.player.name,
+              roomId: this.unitzManager.currentRoomId
+            });
+          }
+        }
+      );
+    };
   }
 
   private bindKeyboardShortcuts() {
     window.addEventListener('keydown', (e) => {
-      if (this.unitzManager.isBuildMode && this.unitzManager.selectedPlacedFurniture) {
-        if (e.key === 'r' || e.key === 'R') {
-          this.unitzManager.rotateFurniture(this.unitzManager.selectedPlacedFurniture.instanceId);
-          audioEngine.playClick();
-        } else if (e.key === 'q' || e.key === 'Q') {
-          this.unitzManager.elevateFurniture(this.unitzManager.selectedPlacedFurniture.instanceId, -4);
-          audioEngine.playClick();
-        } else if (e.key === 'e' || e.key === 'E') {
-          this.unitzManager.elevateFurniture(this.unitzManager.selectedPlacedFurniture.instanceId, 4);
-          audioEngine.playClick();
-        } else if (e.key === 'Delete' || e.key === 'x' || e.key === 'X') {
-          this.unitzManager.removeFurniture(this.unitzManager.selectedPlacedFurniture.instanceId);
-          audioEngine.playPop();
-          this.builderUI.render();
-        }
-      }
+      const activeEl = document.activeElement?.tagName;
+      if (activeEl === 'INPUT' || activeEl === 'TEXTAREA') return;
 
-      if (e.key === 'Escape') {
-        this.wardrobeModal.close();
-        this.shopModal.close();
-        this.navigatorModal.close();
-        this.dialogueBox.close();
-        this.emoteWheel.hide();
-        this.contextMenu.close();
+      if (e.key === 'c' || e.key === 'C') {
+        this.wardrobeModal.open();
+      } else if (e.key === 'b' || e.key === 'B') {
+        this.unitzManager.isBuildMode = !this.unitzManager.isBuildMode;
+        this.builderUI.toggle();
+      } else if (e.key === 'e' || e.key === 'E') {
+        this.emoteWheel.toggle();
+      } else if (e.key === 'n' || e.key === 'N') {
+        this.navigatorModal.open();
+      } else if (e.key === 'm' || e.key === 'M') {
+        audioEngine.toggleMute();
+      } else if (e.key === 'p' || e.key === 'P') {
+        this.profileModal.open();
       }
     });
   }
@@ -585,61 +393,13 @@ class WoozOfflineGame {
     const deltaTime = Math.min(0.1, (currentTime - this.lastTime) / 1000);
     this.lastTime = currentTime;
 
-    // 1. Update entities & mechanics
+    // 1. Update entities & multiplayer mechanics
     this.player.update(deltaTime, () => audioEngine.playStep());
     this.multiplayer.update(deltaTime);
-
-    // Update NPCs
-    for (const npc of this.unitzManager.currentRoom.npcs) {
-      if (npc && typeof npc.update === 'function') {
-        npc.update(
-          deltaTime,
-          () => {
-            const rx = Math.floor(Math.random() * this.unitzManager.currentRoom.width);
-            const ry = Math.floor(Math.random() * this.unitzManager.currentRoom.height);
-            return this.unitzManager.isTileWalkable(rx, ry) ? { x: rx, y: ry } : null;
-          },
-          (sx, sy, tx, ty) => Pathfinding.findPath(
-            sx, sy, tx, ty,
-            (x, y) => this.unitzManager.isTileWalkable(x, y),
-            this.unitzManager.currentRoom.width,
-            this.unitzManager.currentRoom.height
-          )
-        );
-      }
-
-      // Sync NPC speech bubbles
-      if (npc && npc.activeSpeechBubble) {
-        this.chatBubbleManager.updateSenderPos(npc.id, npc.screenPos.x, npc.screenPos.y);
-      }
-    }
-
-    // Sync remote player speech bubble positions
-    for (const rPlayer of this.multiplayer.remotePlayers.values()) {
-      this.chatBubbleManager.updateSenderPos(rPlayer.id, rPlayer.screenPos.x, rPlayer.screenPos.y);
-    }
-
-    // Sync player speech bubble position
-    this.chatBubbleManager.updateSenderPos(this.player.id, this.player.screenPos.x, this.player.screenPos.y);
     this.chatBubbleManager.update(deltaTime);
 
-    // Follow player with camera
-    this.camera.follow(this.player.screenPos.x, this.player.screenPos.y);
-    this.camera.update(deltaTime);
-
-    // 2. Render Frame
-    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-
-    this.ctx.save();
-    this.camera.applyTransform(this.ctx, this.canvas.width, this.canvas.height);
-
-    // Render Room & Entities (including Remote Players)
-    this.unitzManager.render(this.ctx, this.player, this.multiplayer.remotePlayers);
-
-    // Render Floating Comic Speech Bubbles
-    this.chatBubbleManager.render(this.ctx);
-
-    this.ctx.restore();
+    // 2. Render 3D Three.js WebGL Frame
+    this.threeEngine.update(deltaTime);
 
     requestAnimationFrame((t) => this.gameLoop(t));
   }
