@@ -208,12 +208,12 @@ class WoozOfflineGame {
         this.unitzManager.hoveredTile = null;
       }
 
-      // Check if mouse is hovering over ANY avatar body (head, chest, legs, name tag)
+      // Check if mouse is hovering over ANY avatar body (head, chest, legs, name tag, wings)
       let isHoveringAvatar = false;
       for (const rPlayer of this.multiplayer.remotePlayers.values()) {
         const dx = Math.abs(world.x - rPlayer.screenPos.x);
         const dy = world.y - rPlayer.screenPos.y;
-        if (dx <= 32 && dy >= -95 && dy <= 15) {
+        if (dx <= 45 && dy >= -115 && dy <= 25) {
           isHoveringAvatar = true;
           break;
         }
@@ -222,10 +222,17 @@ class WoozOfflineGame {
         for (const npc of this.unitzManager.currentRoom.npcs) {
           const dx = Math.abs(world.x - npc.screenPos.x);
           const dy = world.y - npc.screenPos.y;
-          if (dx <= 32 && dy >= -95 && dy <= 15) {
+          if (dx <= 45 && dy >= -115 && dy <= 25) {
             isHoveringAvatar = true;
             break;
           }
+        }
+      }
+      if (!isHoveringAvatar) {
+        const dx = Math.abs(world.x - this.player.screenPos.x);
+        const dy = world.y - this.player.screenPos.y;
+        if (dx <= 45 && dy >= -115 && dy <= 25) {
+          isHoveringAvatar = true;
         }
       }
       this.canvas.style.cursor = isHoveringAvatar ? 'pointer' : (this.unitzManager.isBuildMode ? 'crosshair' : 'default');
@@ -266,12 +273,12 @@ class WoozOfflineGame {
       }
 
       // REGULAR GAMEPLAY MODE LOGIC
-      // 1. Check Full-Body Hitbox for REAL REMOTE PLAYERS (Head, face, hair, body, legs, feet, name tag)
+      // 1. Check Full-Body Hitbox for REAL REMOTE PLAYERS (Head, face, hair, wings, body, legs, feet, name tag)
       let hitRemotePlayer: any = null;
       for (const rPlayer of this.multiplayer.remotePlayers.values()) {
         const dx = Math.abs(world.x - rPlayer.screenPos.x);
         const dy = world.y - rPlayer.screenPos.y;
-        if (dx <= 32 && dy >= -95 && dy <= 15) {
+        if (dx <= 45 && dy >= -115 && dy <= 25) {
           hitRemotePlayer = rPlayer;
           break;
         }
@@ -333,7 +340,7 @@ class WoozOfflineGame {
       for (const npc of this.unitzManager.currentRoom.npcs) {
         const dx = Math.abs(world.x - npc.screenPos.x);
         const dy = world.y - npc.screenPos.y;
-        if (dx <= 32 && dy >= -95 && dy <= 15) {
+        if (dx <= 45 && dy >= -115 && dy <= 25) {
           hitNPC = npc;
           break;
         }

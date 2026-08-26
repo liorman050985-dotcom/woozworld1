@@ -58,7 +58,7 @@ export class UnitzManager {
     return false;
   }
 
-  public isTileWalkable(gx: number, gy: number): boolean {
+  public isTileWalkable(gx: number, gy: number, excludePos?: { gx: number; gy: number }): boolean {
     if (
       gx < 0 ||
       gx >= this.currentRoom.width ||
@@ -84,6 +84,14 @@ export class UnitzManager {
         if (gx >= f.gx && gx < f.gx + w && gy >= f.gy && gy < f.gy + h) {
           return false;
         }
+      }
+    }
+
+    // Check standing NPCs as solid collision obstacles
+    for (const npc of this.currentRoom.npcs) {
+      if (Math.round(npc.gx) === gx && Math.round(npc.gy) === gy) {
+        if (excludePos && excludePos.gx === gx && excludePos.gy === gy) continue;
+        return false;
       }
     }
 
