@@ -513,18 +513,16 @@ export class ThreeWorldEngine {
       this.localAvatarGroup.scale.set(1.0, 1.0, 1.0);
     }
 
-    // Calculate heading angle
-    const dirAngles = [
-      Math.PI / 4,
-      Math.PI / 2,
-      (3 * Math.PI) / 4,
-      Math.PI,
-      -(3 * Math.PI) / 4,
-      -Math.PI / 2,
-      -Math.PI / 4,
-      0
-    ];
-    this.localAvatarGroup.rotation.y = dirAngles[this.player.direction] || 0;
+    // Calculate smooth heading angle based on movement vector
+    const moveDx = targetX - this.localAvatarGroup.position.x;
+    const moveDz = targetZ - this.localAvatarGroup.position.z;
+    if (Math.hypot(moveDx, moveDz) > 0.04) {
+      const targetAngle = Math.atan2(moveDx, moveDz);
+      let diff = targetAngle - this.localAvatarGroup.rotation.y;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      this.localAvatarGroup.rotation.y += diff * Math.min(1, deltaTime * 16);
+    }
 
     // Walking / Sprinting leg/arm swing
     const isMoving = this.player.isMoving;
@@ -548,7 +546,7 @@ export class ThreeWorldEngine {
       if (legR) legR.rotation.x = 0;
     }
 
-    // 2. Synchronize Remote Players in 3D
+    // 2. Synchronize Remote Players in 3D with accurate rotation
     const activeRemoteIds = new Set(this.multiplayer.remotePlayers.keys());
 
     // Remove disconnected remote avatars
@@ -571,8 +569,18 @@ export class ThreeWorldEngine {
 
       const rX = (rPlayer.gx - room.width / 2) * 2;
       const rZ = (rPlayer.gy - room.height / 2) * 2;
-      grp.position.lerp(new THREE.Vector3(rX, 0.2, rZ), Math.min(1, deltaTime * 12));
-      grp.rotation.y = dirAngles[rPlayer.direction] || 0;
+
+      const rMoveDx = rX - grp.position.x;
+      const rMoveDz = rZ - grp.position.z;
+      if (Math.hypot(rMoveDx, rMoveDz) > 0.04) {
+        const rTargetAngle = Math.atan2(rMoveDx, rMoveDz);
+        let diff = rTargetAngle - grp.rotation.y;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        grp.rotation.y += diff * Math.min(1, deltaTime * 16);
+      }
+
+      grp.position.lerp(new THREE.Vector3(rX, 0.2, rZ), Math.min(1, deltaTime * 14));
     }
 
     // 3. Smooth Camera Tracking
