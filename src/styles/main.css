@@ -28,32 +28,49 @@
 }
 
 body, html {
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+  overflow: hidden !important;
+  position: fixed;
   background-color: #070d18;
   color: var(--text-light);
 }
 
 #app {
-  position: relative;
+  position: fixed;
+  top: 0;
+  left: 0;
   width: 100vw;
   height: 100vh;
+  overflow: hidden !important;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
   background: radial-gradient(circle at center, #1b3252 0%, #080f1c 100%);
 }
 
 /* Canvas viewport */
 #game-canvas-container {
-  position: absolute;
+  position: fixed;
   top: 0;
   left: 0;
-  width: 100%;
-  height: 100%;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden !important;
   cursor: default;
   z-index: 1;
+}
+
+#hud-overlay-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  overflow: hidden !important;
+  z-index: 10;
 }
 
 #game-canvas {
@@ -64,16 +81,16 @@ body, html {
 
 /* Top HUD Bar - Classic Flash Woozworld Header */
 .retro-top-bar {
-  position: absolute;
+  position: fixed;
   top: 10px;
   left: 14px;
   right: 14px;
-  height: 60px;
+  height: 56px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   pointer-events: none;
-  z-index: 10;
+  z-index: 20;
 }
 
 .top-bar-left, .top-bar-right, .top-bar-center {
@@ -274,29 +291,30 @@ body, html {
 /* Bottom Action Dock */
 .retro-bottom-dock {
   position: fixed;
-  bottom: 12px;
+  bottom: 14px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   flex-direction: row;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 10px;
   z-index: 50;
   pointer-events: auto;
-  max-width: 98vw;
+  max-width: calc(100vw - 20px);
+  width: max-content;
 }
 
 .action-dock-container, .dock-container {
   background: linear-gradient(180deg, #1b304d 0%, #0d1a2d 100%);
-  border: 3px solid #00bcd4;
+  border: 2.5px solid #00bcd4;
   border-radius: 36px;
-  padding: 6px 14px;
+  padding: 4px 12px;
   display: flex;
   flex-direction: row;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
   box-shadow: 0 10px 30px rgba(0,0,0,0.8), inset 0 1px 2px rgba(255,255,255,0.4);
 }
 
@@ -309,30 +327,32 @@ body, html {
   border: none;
   color: #fff;
   cursor: pointer;
-  padding: 2px 6px;
-  border-radius: 16px;
+  padding: 2px 4px;
+  border-radius: 14px;
   transition: all 0.18s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   position: relative;
   text-decoration: none;
 }
 
 .dock-icon-circle {
-  width: 42px;
-  height: 42px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.6), inset 0 2px 3px rgba(255,255,255,0.4);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.6), inset 0 2px 3px rgba(255,255,255,0.4);
   transition: all 0.15s ease;
 }
 
 .dock-icon-circle svg {
   display: block;
+  width: 22px;
+  height: 22px;
 }
 
 .dock-btn:hover {
-  transform: translateY(-6px) scale(1.1);
+  transform: translateY(-5px) scale(1.08);
 }
 
 .dock-btn:hover .dock-icon-circle {
@@ -340,9 +360,9 @@ body, html {
 }
 
 .dock-btn-label {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
-  margin-top: 3px;
+  margin-top: 2px;
   color: #b0c4de;
   text-shadow: 0 1px 3px rgba(0,0,0,0.9);
 }
@@ -359,10 +379,10 @@ body, html {
   background: linear-gradient(180deg, #18283e 0%, #0f1c2d 100%);
   border: 2.5px solid #00bcd4;
   border-radius: 28px;
-  padding: 4px 6px 4px 14px;
+  padding: 3px 6px 3px 12px;
   box-shadow: 0 8px 25px rgba(0,0,0,0.7);
-  width: 320px;
-  height: 48px;
+  width: 280px;
+  height: 44px;
 }
 
 .chat-input-field {
@@ -371,7 +391,7 @@ body, html {
   border: none;
   outline: none;
   color: #fff;
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 600;
   font-family: 'Fredoka', sans-serif;
   min-width: 0;
@@ -386,13 +406,13 @@ body, html {
   border: 1.5px solid #b9f6ca;
   color: #000;
   font-weight: 900;
-  font-size: 12px;
-  padding: 6px 14px;
-  border-radius: 20px;
+  font-size: 11px;
+  padding: 5px 12px;
+  border-radius: 18px;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   transition: transform 0.15s ease;
   white-space: nowrap;
 }
