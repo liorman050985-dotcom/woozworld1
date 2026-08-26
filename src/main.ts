@@ -16,6 +16,7 @@ import { FashionMinigame } from './ui/FashionMinigame';
 import { TriviaMinigame } from './ui/TriviaMinigame';
 import { ProfileModal } from './ui/ProfileModal';
 import { AvatarContextMenu } from './ui/AvatarContextMenu';
+import { TradeModal } from './ui/TradeModal';
 import { MultiplayerEngine } from './engine/MultiplayerEngine';
 import { audioEngine } from './engine/AudioEngine';
 import { FURNITURE_CATALOG } from './data/FurnitureItems';
@@ -39,6 +40,7 @@ class WoozOfflineGame {
   private triviaMinigame: TriviaMinigame;
   private profileModal: ProfileModal;
   private contextMenu: AvatarContextMenu;
+  private tradeModal: TradeModal;
 
   private lastTime: number = 0;
 
@@ -109,6 +111,35 @@ class WoozOfflineGame {
       });
     });
     this.contextMenu = new AvatarContextMenu();
+    this.tradeModal = new TradeModal(this.player);
+
+    this.tradeModal.onSendTradeUpdate = (targetId, offer) => {
+      this.multiplayer.broadcast({
+        type: 'trade_update',
+        senderId: this.multiplayer.myId,
+        targetId,
+        offer,
+        roomId: this.unitzManager.currentRoomId
+      });
+    };
+
+    this.tradeModal.onSendTradeConfirm = (targetId) => {
+      this.multiplayer.broadcast({
+        type: 'trade_confirm',
+        senderId: this.multiplayer.myId,
+        targetId,
+        roomId: this.unitzManager.currentRoomId
+      });
+    };
+
+    this.tradeModal.onSendTradeCancel = (targetId) => {
+      this.multiplayer.broadcast({
+        type: 'trade_cancel',
+        senderId: this.multiplayer.myId,
+        targetId,
+        roomId: this.unitzManager.currentRoomId
+      });
+    };
 
     this.hud = new RetroHUD(this.player, this.unitzManager);
     const hudContainer = document.getElementById('hud-overlay-container')!;
@@ -120,6 +151,51 @@ class WoozOfflineGame {
 
     // Start multiplayer immediately on page load
     this.multiplayer.init(this.unitzManager.currentRoomId);
+
+    // Trade Multiplayer Listeners
+    this.multiplayer.onTradeRequestReceived = (senderId, senderName) => {
+      audioEngine.playEmoteChime();
+      const accept = confirm(`🤝 ${senderName} sent you a trade request! Do you want to trade ItemZ, Wooz & Beex?`);
+      if (accept) {
+        this.multiplayer.broadcast({
+          type: 'trade_accept',
+          senderId: this.multiplayer.myId,
+          targetId: senderId,
+          senderName: this.player.name,
+          roomId: this.unitzManager.currentRoomId
+        });
+        this.tradeModal.openTrade(senderId, senderName);
+      } else {
+        this.multiplayer.broadcast({
+          type: 'trade_decline',
+          senderId: this.multiplayer.myId,
+          targetId: senderId,
+          roomId: this.unitzManager.currentRoomId
+        });
+      }
+    };
+
+    this.multiplayer.onTradeAccepted = (senderId, senderName) => {
+      audioEngine.playFanfare();
+      this.tradeModal.openTrade(senderId, senderName);
+    };
+
+    this.multiplayer.onTradeDeclined = () => {
+      alert('The trade request was declined.');
+    };
+
+    this.multiplayer.onTradeUpdated = (senderId, offer) => {
+      this.tradeModal.updateTheirOffer(offer);
+    };
+
+    this.multiplayer.onTradeConfirmed = () => {
+      this.tradeModal.handleTheirConfirm();
+    };
+
+    this.multiplayer.onTradeCancelled = () => {
+      this.tradeModal.close();
+      alert('The trade was cancelled by the other player.');
+    };
 
     // Start background music on first interaction
     document.addEventListener('click', () => {
@@ -323,12 +399,16 @@ class WoozOfflineGame {
                 roomId: this.unitzManager.currentRoomId,
                 animation: 'wave'
               });
-            } else if (action === 'friend') {
-              audioEngine.playEmoteChime();
-              this.chatBubbleManager.addBubble(this.player.id, this.player.name, `⭐ Added ${hitRemotePlayer.name} to Besties list!`, this.player.screenPos.x, this.player.screenPos.y, '#b2ebf2', true);
             } else if (action === 'trade') {
               audioEngine.playPop();
               this.chatBubbleManager.addBubble(this.player.id, this.player.name, `🤝 Sent trade request to ${hitRemotePlayer.name}!`, this.player.screenPos.x, this.player.screenPos.y, '#ffe082', true);
+              this.multiplayer.broadcast({
+                type: 'trade_req',
+                senderId: this.multiplayer.myId,
+                targetId: hitRemotePlayer.id,
+                senderName: this.player.name,
+                roomId: this.unitzManager.currentRoomId
+              });
             }
           }
         );

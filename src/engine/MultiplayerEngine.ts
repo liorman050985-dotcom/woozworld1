@@ -29,7 +29,13 @@ export type NetworkPacket =
   | { type: 'chat'; senderId: string; roomId: string; name: string; text: string }
   | { type: 'emote'; senderId: string; roomId: string; animation: AvatarAnimation }
   | { type: 'outfit'; senderId: string; roomId: string; customization: AvatarCustomization }
-  | { type: 'leave'; senderId: string; roomId: string };
+  | { type: 'leave'; senderId: string; roomId: string }
+  | { type: 'trade_req'; senderId: string; targetId: string; senderName: string; roomId: string }
+  | { type: 'trade_accept'; senderId: string; targetId: string; senderName: string; roomId: string }
+  | { type: 'trade_decline'; senderId: string; targetId: string; roomId: string }
+  | { type: 'trade_update'; senderId: string; targetId: string; offer: any; roomId: string }
+  | { type: 'trade_confirm'; senderId: string; targetId: string; roomId: string }
+  | { type: 'trade_cancel'; senderId: string; targetId: string; roomId: string };
 
 export class MultiplayerEngine {
   public myId: string = '';
@@ -43,6 +49,13 @@ export class MultiplayerEngine {
 
   public onPlayerChat: (senderId: string, name: string, text: string, worldX: number, worldY: number) => void = () => {};
   public onConnectionCountChange: (count: number) => void = () => {};
+
+  public onTradeRequestReceived: (senderId: string, senderName: string) => void = () => {};
+  public onTradeAccepted: (senderId: string, senderName: string) => void = () => {};
+  public onTradeDeclined: (senderId: string) => void = () => {};
+  public onTradeUpdated: (senderId: string, offer: any) => void = () => {};
+  public onTradeConfirmed: (senderId: string) => void = () => {};
+  public onTradeCancelled: (senderId: string) => void = () => {};
 
   constructor(player: Player) {
     this.player = player;
@@ -250,6 +263,30 @@ export class MultiplayerEngine {
     } else if (packet.type === 'leave') {
       this.remotePlayers.delete(packet.senderId);
       this.onConnectionCountChange(this.remotePlayers.size + 1);
+    } else if (packet.type === 'trade_req') {
+      if (packet.targetId === this.myId) {
+        this.onTradeRequestReceived(packet.senderId, packet.senderName);
+      }
+    } else if (packet.type === 'trade_accept') {
+      if (packet.targetId === this.myId) {
+        this.onTradeAccepted(packet.senderId, packet.senderName);
+      }
+    } else if (packet.type === 'trade_decline') {
+      if (packet.targetId === this.myId) {
+        this.onTradeDeclined(packet.senderId);
+      }
+    } else if (packet.type === 'trade_update') {
+      if (packet.targetId === this.myId) {
+        this.onTradeUpdated(packet.senderId, packet.offer);
+      }
+    } else if (packet.type === 'trade_confirm') {
+      if (packet.targetId === this.myId) {
+        this.onTradeConfirmed(packet.senderId);
+      }
+    } else if (packet.type === 'trade_cancel') {
+      if (packet.targetId === this.myId) {
+        this.onTradeCancelled(packet.senderId);
+      }
     }
   }
 
