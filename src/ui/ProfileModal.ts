@@ -7,9 +7,11 @@ export class ProfileModal {
   private container: HTMLElement | null = null;
   private canvas: HTMLCanvasElement | null = null;
   private ctx: CanvasRenderingContext2D | null = null;
+  private onNameChanged: (newName: string) => void = () => {};
 
-  constructor(player: Player) {
+  constructor(player: Player, onNameChanged: (newName: string) => void = () => {}) {
     this.player = player;
+    this.onNameChanged = onNameChanged;
   }
 
   public open() {
@@ -49,19 +51,28 @@ export class ProfileModal {
             <canvas id="profile-avatar-canvas" width="180" height="260"></canvas>
           </div>
 
-          <!-- Right: Player Stats & Badges -->
+          <!-- Right: Player Stats, Name Input & Badges -->
           <div style="flex:1; display:flex; flex-direction:column; gap:12px;">
-            <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-              <div>
-                <h2 style="font-size:22px; color:#fff; font-weight:900;">${this.player.name}</h2>
-                <div style="color:#00bcd4; font-size:13px; font-weight:700;">★ VIP Superstar Resident</div>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div style="display:flex; align-items:center; gap:6px;">
+                <input
+                  type="text"
+                  id="profile-name-input"
+                  value="${this.player.name}"
+                  maxlength="16"
+                  style="background:#101c2e; border:2px solid #00bcd4; border-radius:8px; padding:4px 8px; color:#fff; font-size:18px; font-weight:900; width:170px;"
+                  title="Click to edit your username"
+                />
+                <button class="builder-tool-btn" id="profile-save-name-btn" style="padding:4px 8px; font-size:12px; background:#00e676; color:#000;">
+                  Save
+                </button>
               </div>
               <span class="level-star" style="font-size:13px; padding:4px 10px;">Lv.${this.player.level}</span>
             </div>
 
-            <!-- Status input -->
+            <!-- Status message -->
             <div style="background:#132034; border:1px solid #2d476e; border-radius:10px; padding:8px 12px; font-size:13px; color:#b0c4de;">
-              💬 Status: <em>"Living the classic offline Woozworld dream! ✨"</em>
+              💬 Status: <em>"Rocking the classic Woozworld retro world! ✨"</em>
             </div>
 
             <!-- Stats grid -->
@@ -128,6 +139,22 @@ export class ProfileModal {
     document.getElementById('profile-close-btn')?.addEventListener('click', () => {
       audioEngine.playClick();
       this.close();
+    });
+
+    const saveNameBtn = document.getElementById('profile-save-name-btn');
+    const nameInput = document.getElementById('profile-name-input') as HTMLInputElement;
+
+    const handleSave = () => {
+      if (nameInput && nameInput.value.trim().length >= 2) {
+        audioEngine.playPop();
+        this.player.setName(nameInput.value.trim());
+        this.onNameChanged(this.player.name);
+      }
+    };
+
+    saveNameBtn?.addEventListener('click', handleSave);
+    nameInput?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') handleSave();
     });
   }
 }

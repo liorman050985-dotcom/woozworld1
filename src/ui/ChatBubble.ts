@@ -2,44 +2,126 @@ import { audioEngine } from '../engine/AudioEngine';
 
 export interface FloatingBubble {
   id: string;
+  senderId: string;
   senderName: string;
   text: string;
   worldX: number;
   worldY: number;
   timer: number;
   color?: string;
+  isSelf?: boolean;
+}
+
+export interface ChatLogEntry {
+  senderName: string;
+  text: string;
+  time: string;
+  color: string;
+  isSelf: boolean;
 }
 
 export class ChatBubbleManager {
-  private bubbles: FloatingBubble[] = [];
+  private bubbles: Map<string, FloatingBubble> = new Map();
+  public chatHistory: ChatLogEntry[] = [];
+  private logContainer: HTMLElement | null = null;
 
-  public addBubble(senderName: string, text: string, worldX: number, worldY: number, color?: string) {
+  constructor() {
+    this.initLogContainer();
+  }
+
+  private initLogContainer() {
+    let el = document.getElementById('chat-history-log');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'chat-history-log';
+      el.style.position = 'fixed';
+      el.style.bottom = '75px';
+      el.style.left = '16px';
+      el.style.width = '320px';
+      el.style.maxHeight = '140px';
+      el.style.overflowY = 'auto';
+      el.style.background = 'rgba(10, 18, 30, 0.75)';
+      el.style.border = '1.5px solid rgba(0, 188, 212, 0.4)';
+      el.style.borderRadius = '12px';
+      el.style.padding = '8px 10px';
+      el.style.display = 'flex';
+      el.style.flexDirection = 'column';
+      el.style.gap = '4px';
+      el.style.zIndex = '15';
+      el.style.pointerEvents = 'auto';
+      el.style.boxShadow = '0 4px 15px rgba(0,0,0,0.5)';
+      document.body.appendChild(el);
+    }
+    this.logContainer = el;
+  }
+
+  public addBubble(
+    senderId: string,
+    senderName: string,
+    text: string,
+    worldX: number,
+    worldY: number,
+    color?: string,
+    isSelf: boolean = false
+  ) {
     audioEngine.playPop();
-    // Remove old bubble from same sender
-    this.bubbles = this.bubbles.filter(b => b.senderName !== senderName);
 
-    this.bubbles.push({
-      id: 'bubble_' + Date.now() + '_' + Math.random(),
+    this.bubbles.set(senderId, {
+      id: 'bubble_' + senderId,
+      senderId,
       senderName,
       text,
       worldX,
       worldY,
-      timer: 5.0,
-      color
+      timer: 5.5,
+      color: color || (isSelf ? '#ffffff' : '#e0f7fa'),
+      isSelf
     });
+
+    // Add to chat history log
+    const now = new Date();
+    const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+    const nameColor = isSelf ? '#ffd700' : '#00e5ff';
+
+    this.chatHistory.push({
+      senderName,
+      text,
+      time: timeStr,
+      color: nameColor,
+      isSelf
+    });
+
+    if (this.chatHistory.length > 30) {
+      this.chatHistory.shift();
+    }
+
+    this.renderLog();
+  }
+
+  private renderLog() {
+    if (!this.logContainer) return;
+    this.logContainer.innerHTML = this.chatHistory.map(entry => `
+      <div style="font-size:12px; line-height:1.3; color:#fff; word-break:break-word;">
+        <span style="color:#78909c; font-size:10px;">[${entry.time}]</span>
+        <strong style="color:${entry.color};">${entry.senderName}:</strong>
+        <span>${entry.text}</span>
+      </div>
+    `).join('');
+
+    this.logContainer.scrollTop = this.logContainer.scrollHeight;
   }
 
   public update(deltaTime: number) {
-    for (let i = this.bubbles.length - 1; i >= 0; i--) {
-      this.bubbles[i].timer -= deltaTime;
-      if (this.bubbles[i].timer <= 0) {
-        this.bubbles.splice(i, 1);
+    for (const [id, bubble] of this.bubbles.entries()) {
+      bubble.timer -= deltaTime;
+      if (bubble.timer <= 0) {
+        this.bubbles.delete(id);
       }
     }
   }
 
-  public updateSenderPos(senderName: string, worldX: number, worldY: number) {
-    const bubble = this.bubbles.find(b => b.senderName === senderName);
+  public updateSenderPos(senderId: string, worldX: number, worldY: number) {
+    const bubble = this.bubbles.get(senderId);
     if (bubble) {
       bubble.worldX = worldX;
       bubble.worldY = worldY;
@@ -48,39 +130,45 @@ export class ChatBubbleManager {
 
   public render(ctx: CanvasRenderingContext2D) {
     ctx.save();
-    for (const b of this.bubbles) {
-      const bubbleY = b.worldY - 90;
+    for (const b of this.bubbles.values()) {
+      const bubbleY = b.worldY - 95;
       const bubbleX = b.worldX;
 
       ctx.font = 'bold 13px Fredoka, sans-serif';
       const textWidth = ctx.measureText(b.text).width;
-      const padding = 12;
-      const boxW = Math.min(240, textWidth + padding * 2);
-      const boxH = 30;
+      const nameWidth = ctx.measureText(b.senderName).width;
+      const boxW = Math.max(120, Math.min(260, Math.max(textWidth, nameWidth) + 24));
+      const boxH = 42;
 
-      // Draw bubble background
+      // Bubble Background
       ctx.fillStyle = b.color || '#ffffff';
       ctx.beginPath();
       ctx.roundRect(bubbleX - boxW / 2, bubbleY - boxH, boxW, boxH, 14);
       ctx.fill();
 
-      // Shadow & border
-      ctx.strokeStyle = 'rgba(0,0,0,0.2)';
-      ctx.lineWidth = 1.5;
+      // Border with accent
+      ctx.strokeStyle = b.isSelf ? '#ffc107' : '#00bcd4';
+      ctx.lineWidth = 2;
       ctx.stroke();
 
-      // Speech pointer tail
+      // Tail
       ctx.fillStyle = b.color || '#ffffff';
       ctx.beginPath();
-      ctx.moveTo(bubbleX - 6, bubbleY);
-      ctx.lineTo(bubbleX, bubbleY + 6);
-      ctx.lineTo(bubbleX + 6, bubbleY);
+      ctx.moveTo(bubbleX - 7, bubbleY);
+      ctx.lineTo(bubbleX, bubbleY + 8);
+      ctx.lineTo(bubbleX + 7, bubbleY);
       ctx.closePath();
       ctx.fill();
 
-      // Text
-      ctx.fillStyle = '#111111';
+      // Sender Name Tag inside bubble header
+      ctx.font = 'bold 10px Fredoka, sans-serif';
+      ctx.fillStyle = b.isSelf ? '#d84315' : '#00838f';
       ctx.textAlign = 'center';
+      ctx.fillText(b.senderName, bubbleX, bubbleY - 26);
+
+      // Chat Message Text
+      ctx.font = 'bold 13px Fredoka, sans-serif';
+      ctx.fillStyle = '#111111';
       ctx.fillText(b.text, bubbleX, bubbleY - 10);
     }
     ctx.restore();

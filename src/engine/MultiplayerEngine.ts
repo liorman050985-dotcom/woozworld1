@@ -41,7 +41,7 @@ export class MultiplayerEngine {
   private localChannel: BroadcastChannel | null = null;
   private heartbeatInterval: number | null = null;
 
-  public onPlayerChat: (name: string, text: string, worldX: number, worldY: number) => void = () => {};
+  public onPlayerChat: (senderId: string, name: string, text: string, worldX: number, worldY: number) => void = () => {};
   public onConnectionCountChange: (count: number) => void = () => {};
 
   constructor(player: Player) {
@@ -233,7 +233,7 @@ export class MultiplayerEngine {
     } else if (packet.type === 'chat') {
       const rPlayer = this.remotePlayers.get(packet.senderId);
       const worldPos = rPlayer ? rPlayer.screenPos : IsometricGrid.gridToScreen(5, 5);
-      this.onPlayerChat(packet.name, packet.text, worldPos.x, worldPos.y);
+      this.onPlayerChat(packet.senderId, packet.name, packet.text, worldPos.x, worldPos.y);
       if (rPlayer) rPlayer.lastSeen = now;
     } else if (packet.type === 'emote') {
       const rPlayer = this.remotePlayers.get(packet.senderId);

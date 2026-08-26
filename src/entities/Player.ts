@@ -1,12 +1,18 @@
-import { AvatarCustomization, AvatarRenderer, Direction, AvatarAnimation } from './AvatarRenderer';
+import { AvatarCustomization, Direction, AvatarAnimation } from './AvatarRenderer';
 import { IsometricGrid, Point2D } from '../engine/IsometricGrid';
 import { CLOTHING_CATALOG } from '../data/ClothingItems';
 
-const STORAGE_KEY = 'woozoffline_player_save_v1';
+const STORAGE_KEY = 'woozoffline_player_save_v2';
+
+const RANDOM_NAMES = [
+  'StarGazer', 'NeonRider', 'GlitterQueen', 'CyberNinja', 'ShadowViper',
+  'GlamourStar', 'RetroVibe', 'PixelHero', 'SunKissed', 'MysticRave',
+  'VelvetSky', 'ElectricFox', 'CherryBlossom', 'FrostBite', 'GoldenKnight'
+];
 
 export class Player {
-  public id: string = 'player_main';
-  public name: string = 'WoozStar';
+  public id: string = 'player_' + Math.random().toString(36).substring(2, 9);
+  public name: string = 'Woozen_' + Math.floor(100 + Math.random() * 900);
   public level: number = 42;
   public xp: number = 7850;
   public maxXp: number = 10000;
@@ -77,12 +83,25 @@ export class Player {
     }
   };
 
-  // Inventory of clothing IDs unlocked (all unlocked by default!)
   public unlockedClothingIds: Set<string> = new Set(CLOTHING_CATALOG.map(c => c.id));
 
   constructor() {
+    this.generateRandomDefaultIdentity();
     this.loadFromStorage();
     this.screenPos = IsometricGrid.gridToScreen(this.gx, this.gy, this.gz);
+  }
+
+  private generateRandomDefaultIdentity() {
+    const randomBase = RANDOM_NAMES[Math.floor(Math.random() * RANDOM_NAMES.length)];
+    const num = Math.floor(10 + Math.random() * 90);
+    this.name = `${randomBase}_${num}`;
+  }
+
+  public setName(newName: string) {
+    if (newName && newName.trim().length >= 2) {
+      this.name = newName.trim().substring(0, 16);
+      this.saveToStorage();
+    }
   }
 
   public update(deltaTime: number, onStepSFX?: () => void) {

@@ -75,7 +75,7 @@ class WoozOfflineGame {
       this.multiplayer.changeRoom(this.unitzManager.currentRoomId);
     });
     this.emoteWheel = new EmoteWheel(this.player, (anim) => {
-      this.chatBubbleManager.addBubble(this.player.name, `*${anim.toUpperCase()}*`, this.player.screenPos.x, this.player.screenPos.y, '#ffd54f');
+      this.chatBubbleManager.addBubble(this.player.id, this.player.name, `*${anim.toUpperCase()}*`, this.player.screenPos.x, this.player.screenPos.y, '#ffd54f', true);
       this.multiplayer.broadcast({
         type: 'emote',
         senderId: this.multiplayer.myId,
@@ -86,7 +86,22 @@ class WoozOfflineGame {
     this.dialogueBox = new DialogueBox();
     this.fashionMinigame = new FashionMinigame(this.player);
     this.triviaMinigame = new TriviaMinigame(this.player);
-    this.profileModal = new ProfileModal(this.player);
+    this.profileModal = new ProfileModal(this.player, (newName) => {
+      const nameEl = document.querySelector('.player-name-text');
+      if (nameEl) nameEl.textContent = newName;
+      this.multiplayer.broadcast({
+        type: 'join',
+        senderId: this.multiplayer.myId,
+        roomId: this.unitzManager.currentRoomId,
+        name: this.player.name,
+        level: this.player.level,
+        gx: this.player.gx,
+        gy: this.player.gy,
+        gz: this.player.gz,
+        direction: this.player.direction,
+        customization: this.player.customization
+      });
+    });
     this.contextMenu = new AvatarContextMenu();
 
     this.hud = new RetroHUD(this.player, this.unitzManager);
@@ -105,8 +120,8 @@ class WoozOfflineGame {
       audioEngine.startBackgroundMusic(this.unitzManager.currentRoom.defaultMusicTrack);
     }, { once: true });
 
-    this.multiplayer.onPlayerChat = (name, text, worldX, worldY) => {
-      this.chatBubbleManager.addBubble(name, text, worldX, worldY);
+    this.multiplayer.onPlayerChat = (senderId, name, text, worldX, worldY) => {
+      this.chatBubbleManager.addBubble(senderId, name, text, worldX, worldY, undefined, false);
     };
 
     this.multiplayer.onConnectionCountChange = (count) => {
@@ -136,7 +151,7 @@ class WoozOfflineGame {
     this.hud.onToggleEmotes = () => this.emoteWheel.toggle();
 
     this.hud.onSendChatMessage = (text) => {
-      this.chatBubbleManager.addBubble(this.player.name, text, this.player.screenPos.x, this.player.screenPos.y);
+      this.chatBubbleManager.addBubble(this.player.id, this.player.name, text, this.player.screenPos.x, this.player.screenPos.y, undefined, true);
       this.multiplayer.broadcast({
         type: 'chat',
         senderId: this.multiplayer.myId,
@@ -151,6 +166,7 @@ class WoozOfflineGame {
         if (dist <= 3 && Math.random() > 0.4) {
           window.setTimeout(() => {
             npc.speak(`@${this.player.name} Love it! ✨`);
+            this.chatBubbleManager.addBubble(npc.id, npc.name, `@${this.player.name} Love it! ✨`, npc.screenPos.x, npc.screenPos.y, '#f8bbd0');
           }, 1000);
         }
       }
@@ -282,7 +298,7 @@ class WoozOfflineGame {
         } else if (def && def.interactionType === 'playMusic') {
           const name = audioEngine.nextTrack();
           audioEngine.playPop();
-          this.chatBubbleManager.addBubble(this.player.name, `♫ Now Playing: ${name}`, this.player.screenPos.x, this.player.screenPos.y);
+          this.chatBubbleManager.addBubble(this.player.id, this.player.name, `♫ Now Playing: ${name}`, this.player.screenPos.x, this.player.screenPos.y, undefined, true);
           return;
         } else if (def && def.interactionType === 'arcade') {
           this.triviaMinigame.start(() => {});
@@ -384,17 +400,17 @@ class WoozOfflineGame {
 
       // Sync NPC speech bubbles
       if (npc.activeSpeechBubble) {
-        this.chatBubbleManager.updateSenderPos(npc.name, npc.screenPos.x, npc.screenPos.y);
+        this.chatBubbleManager.updateSenderPos(npc.id, npc.screenPos.x, npc.screenPos.y);
       }
     }
 
     // Sync remote player speech bubble positions
     for (const rPlayer of this.multiplayer.remotePlayers.values()) {
-      this.chatBubbleManager.updateSenderPos(rPlayer.name, rPlayer.screenPos.x, rPlayer.screenPos.y);
+      this.chatBubbleManager.updateSenderPos(rPlayer.id, rPlayer.screenPos.x, rPlayer.screenPos.y);
     }
 
     // Sync player speech bubble position
-    this.chatBubbleManager.updateSenderPos(this.player.name, this.player.screenPos.x, this.player.screenPos.y);
+    this.chatBubbleManager.updateSenderPos(this.player.id, this.player.screenPos.x, this.player.screenPos.y);
     this.chatBubbleManager.update(deltaTime);
 
     // Follow player with camera
