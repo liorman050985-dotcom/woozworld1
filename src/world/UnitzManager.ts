@@ -26,6 +26,15 @@ export class UnitzManager {
     this.currentRoom = this.rooms[this.currentRoomId] || this.rooms['central_plaza'];
   }
 
+  public switchRoom(roomId: string): boolean {
+    if (this.rooms[roomId]) {
+      this.currentRoomId = roomId;
+      this.currentRoom = this.rooms[roomId];
+      return true;
+    }
+    return false;
+  }
+
   public changeRoom(roomId: string, player: Player): boolean {
     if (this.rooms[roomId]) {
       this.currentRoomId = roomId;
@@ -98,6 +107,10 @@ export class UnitzManager {
   }
 
   public placeFurniture(defId: string, gx: number, gy: number): PlacedFurniture | null {
+    if (this.currentRoom.category !== 'personal') {
+      return null;
+    }
+
     const def = FURNITURE_CATALOG.find(d => d.id === defId);
     if (!def) return null;
 
@@ -116,6 +129,8 @@ export class UnitzManager {
   }
 
   public removeFurniture(instanceId: string) {
+    if (this.currentRoom.category !== 'personal') return;
+
     this.currentRoom.furniture = this.currentRoom.furniture.filter(f => f.instanceId !== instanceId);
     if (this.selectedPlacedFurniture?.instanceId === instanceId) {
       this.selectedPlacedFurniture = null;
@@ -124,24 +139,35 @@ export class UnitzManager {
   }
 
   public rotateFurniture(instanceId: string) {
-    const item = this.currentRoom.furniture.find(f => f.instanceId === instanceId);
-    if (item) {
-      item.rotation = ((item.rotation + 1) % 4) as 0 | 1 | 2 | 3;
+    if (this.currentRoom.category !== 'personal') return;
+
+    const f = this.currentRoom.furniture.find(item => item.instanceId === instanceId);
+    if (f) {
+      f.rotation = ((f.rotation + 1) % 4) as 0 | 1 | 2 | 3;
       this.saveRoomsToStorage();
     }
   }
 
-  public elevateFurniture(instanceId: string, delta: number) {
-    const item = this.currentRoom.furniture.find(f => f.instanceId === instanceId);
-    if (item) {
-      item.gz = Math.max(0, Math.min(60, item.gz + delta));
+  public elevateFurniture(instanceId: string, deltaZ: number) {
+    if (this.currentRoom.category !== 'personal') return;
+
+    const f = this.currentRoom.furniture.find(item => item.instanceId === instanceId);
+    if (f) {
+      f.gz = Math.max(0, Math.min(60, f.gz + deltaZ));
       this.saveRoomsToStorage();
     }
   }
 
-  public paintTile(gx: number, gy: number, type: TileData['type']) {
-    if (this.currentRoom.tiles[gx]?.[gy]) {
-      this.currentRoom.tiles[gx][gy].type = type;
+  public paintTile(gx: number, gy: number, type: string) {
+    if (this.currentRoom.category !== 'personal') return;
+
+    if (
+      gx >= 0 &&
+      gx < this.currentRoom.width &&
+      gy >= 0 &&
+      gy < this.currentRoom.height
+    ) {
+      this.currentRoom.tiles[gx][gy].type = type as TileData['type'];
       this.saveRoomsToStorage();
     }
   }
@@ -314,8 +340,26 @@ export class UnitzManager {
       const raw = localStorage.getItem(ROOMS_STORAGE_KEY);
       if (raw) {
         const saved = JSON.parse(raw);
-        // Merge personal rooms and customized public rooms
-        this.rooms = { ...this.rooms, ...saved };
+        for (const [roomId, room] of Object.entries(saved as Record<string, any>)) {
+          if (this.rooms[roomId]) {
+            this.rooms[roomId].furniture = room.furniture || this.rooms[roomId].furniture;
+            this.rooms[roomId].tiles = room.tiles || this.rooms[roomId].tiles;
+            this.rooms[roomId].wallColor = room.wallColor || this.rooms[roomId].wallColor;
+          } else {
+            this.rooms[roomId] = room;
+          }
+        }
+      }
+
+      // Ensure all NPCs across all rooms are proper NPC class instances
+      for (const room of Object.values(this.rooms)) {
+        room.npcs = (room.npcs || []).map((n: any) => {
+          if (n instanceof NPC) return n;
+          const npc = new NPC(n.id, n.name, n.role, n.gx, n.gy, n.customization, n.dialogueTreeId);
+          npc.gz = n.gz || 0;
+          npc.direction = n.direction || 0;
+          return npc;
+        });
       }
     } catch (e) {
       console.warn('Failed loading rooms from storage:', e);

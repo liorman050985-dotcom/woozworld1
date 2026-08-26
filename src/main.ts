@@ -70,6 +70,13 @@ class WoozOfflineGame {
     });
     this.shopModal = new ShopModal(this.player);
     this.builderUI = new UnitzBuilderUI(this.unitzManager);
+    this.builderUI.onGoToPersonalUnitz = () => {
+      this.unitzManager.switchRoom('personal_penthouse');
+      this.hud.updateRoomTitle(this.unitzManager.currentRoom.name);
+      this.multiplayer.changeRoom(this.unitzManager.currentRoomId);
+      this.builderUI.render();
+    };
+
     this.navigatorModal = new WorldNavigator(this.unitzManager, this.player, () => {
       this.hud.updateRoomTitle(this.unitzManager.currentRoom.name);
       this.multiplayer.changeRoom(this.unitzManager.currentRoomId);
@@ -87,8 +94,7 @@ class WoozOfflineGame {
     this.fashionMinigame = new FashionMinigame(this.player);
     this.triviaMinigame = new TriviaMinigame(this.player);
     this.profileModal = new ProfileModal(this.player, (newName) => {
-      const nameEl = document.querySelector('.player-name-text');
-      if (nameEl) nameEl.textContent = newName;
+      this.hud.updatePlayerName(newName);
       this.multiplayer.broadcast({
         type: 'join',
         senderId: this.multiplayer.myId,
@@ -149,6 +155,20 @@ class WoozOfflineGame {
     this.hud.onOpenNavigator = () => this.navigatorModal.open();
     this.hud.onToggleBuildMode = () => this.builderUI.toggle();
     this.hud.onToggleEmotes = () => this.emoteWheel.toggle();
+    this.hud.onNameChanged = (newName) => {
+      this.multiplayer.broadcast({
+        type: 'join',
+        senderId: this.multiplayer.myId,
+        roomId: this.unitzManager.currentRoomId,
+        name: newName,
+        level: this.player.level,
+        gx: this.player.gx,
+        gy: this.player.gy,
+        gz: this.player.gz,
+        direction: this.player.direction,
+        customization: this.player.customization
+      });
+    };
 
     this.hud.onSendChatMessage = (text) => {
       this.chatBubbleManager.addBubble(this.player.id, this.player.name, text, this.player.screenPos.x, this.player.screenPos.y, undefined, true);
@@ -383,23 +403,25 @@ class WoozOfflineGame {
 
     // Update NPCs
     for (const npc of this.unitzManager.currentRoom.npcs) {
-      npc.update(
-        deltaTime,
-        () => {
-          const rx = Math.floor(Math.random() * this.unitzManager.currentRoom.width);
-          const ry = Math.floor(Math.random() * this.unitzManager.currentRoom.height);
-          return this.unitzManager.isTileWalkable(rx, ry) ? { x: rx, y: ry } : null;
-        },
-        (sx, sy, tx, ty) => Pathfinding.findPath(
-          sx, sy, tx, ty,
-          (x, y) => this.unitzManager.isTileWalkable(x, y),
-          this.unitzManager.currentRoom.width,
-          this.unitzManager.currentRoom.height
-        )
-      );
+      if (npc && typeof npc.update === 'function') {
+        npc.update(
+          deltaTime,
+          () => {
+            const rx = Math.floor(Math.random() * this.unitzManager.currentRoom.width);
+            const ry = Math.floor(Math.random() * this.unitzManager.currentRoom.height);
+            return this.unitzManager.isTileWalkable(rx, ry) ? { x: rx, y: ry } : null;
+          },
+          (sx, sy, tx, ty) => Pathfinding.findPath(
+            sx, sy, tx, ty,
+            (x, y) => this.unitzManager.isTileWalkable(x, y),
+            this.unitzManager.currentRoom.width,
+            this.unitzManager.currentRoom.height
+          )
+        );
+      }
 
       // Sync NPC speech bubbles
-      if (npc.activeSpeechBubble) {
+      if (npc && npc.activeSpeechBubble) {
         this.chatBubbleManager.updateSenderPos(npc.id, npc.screenPos.x, npc.screenPos.y);
       }
     }

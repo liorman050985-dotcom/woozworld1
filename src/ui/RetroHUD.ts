@@ -17,6 +17,7 @@ export class RetroHUD {
   public onOpenProfile: () => void = () => {};
   public onOpenColorWheel: () => void = () => {};
   public onSendChatMessage: (text: string) => void = () => {};
+  public onNameChanged: (newName: string) => void = () => {};
 
   constructor(player: Player, unitzManager: UnitzManager) {
     this.player = player;
@@ -35,7 +36,8 @@ export class RetroHUD {
             </div>
             <div class="player-info-meta">
               <div style="display:flex; align-items:center; gap:4px;">
-                <span class="player-name-text">${this.player.name}</span>
+                <span class="player-name-text" id="hud-player-name">${this.player.name}</span>
+                <button id="hud-edit-name-btn" title="Change your username" style="background:none; border:none; color:#00e5ff; cursor:pointer; font-size:12px; padding:0 2px;">✏️</button>
                 <span style="font-size:12px; color:#ffd700;" title="VIP Master Resident">👑</span>
               </div>
               <div class="level-row">
@@ -91,91 +93,81 @@ export class RetroHUD {
         </div>
       </header>
 
-      <!-- Bottom Action Dock: Classic Iconic Dock -->
+      <!-- Bottom Action Dock: Classic Glossy Buttons -->
       <footer class="retro-bottom-dock">
-        <div class="dock-container">
-          <button class="dock-btn" id="dock-btn-nav" title="World Navigator Map">
-            <div class="btn-icon-wrapper" style="background:linear-gradient(180deg, #0288d1, #01579b);">🌐</div>
-            <span class="label">World</span>
+        <div class="action-dock-container">
+          <button class="dock-btn" id="dock-btn-world" title="World Navigator">
+            <span class="dock-btn-icon">🗺️</span>
+            <span class="dock-btn-label">World</span>
           </button>
-
-          <button class="dock-btn" id="dock-btn-my-unitz" title="Go to My Unitz">
-            <div class="btn-icon-wrapper" style="background:linear-gradient(180deg, #43a047, #1b5e20);">🏠</div>
-            <span class="label">My Unitz</span>
+          <button class="dock-btn" id="dock-btn-penthouse" title="My Penthouse Unitz">
+            <span class="dock-btn-icon">🏠</span>
+            <span class="dock-btn-label">My Unitz</span>
           </button>
-
-          <button class="dock-btn" id="dock-btn-wardrobe" title="Closet / Wardrobe">
-            <div class="btn-icon-wrapper" style="background:linear-gradient(180deg, #ec407a, #ad1457);">👗</div>
-            <span class="label">Wardrobe</span>
+          <button class="dock-btn" id="dock-btn-wardrobe" title="ClosetZ Wardrobe Studio">
+            <span class="dock-btn-icon">👗</span>
+            <span class="dock-btn-label">Wardrobe</span>
           </button>
-
-          <button class="dock-btn" id="dock-btn-color-wheel" title="Iconic Color Wheel Studio">
-            <div class="btn-icon-wrapper" style="background:linear-gradient(180deg, #ab47bc, #6a1b9a);">🎨</div>
-            <span class="label">Colors</span>
+          <button class="dock-btn" id="dock-btn-colors" title="Circular Color Wheel">
+            <span class="dock-btn-icon">🎨</span>
+            <span class="dock-btn-label">Colors</span>
           </button>
-
-          <button class="dock-btn" id="dock-btn-shop" title="WoozBoutique Shop">
-            <div class="btn-icon-wrapper" style="background:linear-gradient(180deg, #ff9800, #e65100);">🛍️</div>
-            <span class="label">Shop</span>
+          <button class="dock-btn" id="dock-btn-shop" title="ShopZ (All Items Free)">
+            <span class="dock-btn-icon">🛍️</span>
+            <span class="dock-btn-label">ShopZ</span>
           </button>
-
           <button class="dock-btn" id="dock-btn-build" title="Unitz Decorator Tool">
-            <div class="btn-icon-wrapper" style="background:linear-gradient(180deg, #fbc02d, #f57f17);">🔨</div>
-            <span class="label">Decorate</span>
+            <span class="dock-btn-icon">🔨</span>
+            <span class="dock-btn-label">Decorate</span>
           </button>
-
-          <button class="dock-btn" id="dock-btn-emotes" title="Poses & Emotes Wheel">
-            <div class="btn-icon-wrapper" style="background:linear-gradient(180deg, #26c6da, #00838f);">🕺</div>
-            <span class="label">Emotes</span>
+          <button class="dock-btn" id="dock-btn-emotes" title="ActionZ & Emotes">
+            <span class="dock-btn-icon">🕺</span>
+            <span class="dock-btn-label">Emotes</span>
           </button>
-
           <button class="dock-btn" id="dock-btn-profile" title="WoozIn Profile Card">
-            <div class="btn-icon-wrapper" style="background:linear-gradient(180deg, #7e57c2, #4527a0);">⭐</div>
-            <span class="label">WoozIn</span>
+            <span class="dock-btn-icon">⭐</span>
+            <span class="dock-btn-label">WoozIn</span>
           </button>
         </div>
 
-        <!-- Classic comic chat box input -->
-        <div class="chat-dock-bar">
+        <!-- Chat Input Bar -->
+        <div class="chat-input-bar">
           <input
             type="text"
-            class="chat-input"
-            id="hud-chat-input"
-            placeholder="Say something to the room..."
-            maxlength="90"
+            id="chat-input-field"
+            class="chat-input-field"
+            placeholder="Type your message and press Enter to chat in the room..."
+            maxlength="120"
           />
-          <button class="chat-send-btn" id="hud-chat-send" title="Send (Enter)">
-            💬
+          <button id="chat-send-btn" class="chat-send-btn" title="Send Chat">
+            <span>💬 Send</span>
           </button>
         </div>
       </footer>
     `;
 
     this.bindEvents();
-    this.initPortraitCanvas();
-  }
-
-  private initPortraitCanvas() {
-    this.previewCanvas = document.getElementById('hud-avatar-portrait') as HTMLCanvasElement;
-    if (this.previewCanvas) {
-      this.previewCtx = this.previewCanvas.getContext('2d');
-      this.updatePortrait();
-    }
+    this.updatePortrait();
   }
 
   public updatePortrait() {
-    if (!this.previewCanvas || !this.previewCtx) return;
-    this.previewCtx.clearRect(0, 0, this.previewCanvas.width, this.previewCanvas.height);
-    AvatarRenderer.drawAvatar(
-      this.previewCtx,
-      40,
-      75,
-      this.player.customization,
-      0,
-      'idle',
-      0,
-      1.1
-    );
+    this.previewCanvas = document.getElementById('hud-avatar-portrait') as HTMLCanvasElement;
+    if (this.previewCanvas) {
+      this.previewCtx = this.previewCanvas.getContext('2d');
+      if (this.previewCtx) {
+        this.previewCtx.clearRect(0, 0, this.previewCanvas.width, this.previewCanvas.height);
+        AvatarRenderer.drawAvatar(
+          this.previewCtx,
+          40,
+          105,
+          this.player.customization,
+          0,
+          'idle',
+          0,
+          1.4
+        );
+      }
+    }
   }
 
   public updateRoomTitle(name: string) {
@@ -183,11 +175,72 @@ export class RetroHUD {
     if (el) el.textContent = name;
   }
 
-  public updateCurrency() {
-    const wEl = document.getElementById('hud-wooz-val');
-    const bEl = document.getElementById('hud-beex-val');
-    if (wEl) wEl.textContent = this.player.wooz.toLocaleString();
-    if (bEl) bEl.textContent = this.player.beex.toLocaleString();
+  public updatePlayerName(name: string) {
+    const el = document.getElementById('hud-player-name');
+    if (el) el.textContent = name;
+  }
+
+  private promptChangeName() {
+    const currentName = this.player.name;
+    const modal = document.createElement('div');
+    modal.className = 'retro-modal-backdrop open';
+    modal.style.zIndex = '100';
+
+    modal.innerHTML = `
+      <div class="retro-modal" style="width:380px;">
+        <div class="modal-header">
+          <div class="modal-title"><span>✏️</span> Change Character Name</div>
+          <button class="modal-close-btn" id="name-modal-close">✕</button>
+        </div>
+        <div class="modal-body" style="padding:20px; display:flex; flex-direction:column; gap:14px; text-align:center;">
+          <div style="font-size:13px; color:#b0c4de;">
+            Enter your new Woozen character name (2-16 characters):
+          </div>
+          <input
+            type="text"
+            id="new-name-input-field"
+            value="${currentName}"
+            maxlength="16"
+            style="background:#101c2e; border:2px solid #00bcd4; border-radius:10px; padding:10px; color:#fff; font-size:16px; font-weight:bold; text-align:center;"
+          />
+          <div style="display:flex; justify-content:center; gap:10px;">
+            <button id="save-new-name-btn" class="builder-tool-btn" style="background:#00e676; color:#000; font-weight:bold; padding:8px 20px;">
+              ✓ Save Name
+            </button>
+            <button id="cancel-new-name-btn" class="builder-tool-btn" style="background:#37474f; color:#fff; padding:8px 16px;">
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const input = modal.querySelector('#new-name-input-field') as HTMLInputElement;
+    input.focus();
+    input.select();
+
+    const closeModal = () => modal.remove();
+
+    const handleSave = () => {
+      const val = input.value.trim();
+      if (val.length >= 2) {
+        audioEngine.playFanfare();
+        this.player.setName(val);
+        this.updatePlayerName(this.player.name);
+        this.onNameChanged(this.player.name);
+        closeModal();
+      }
+    };
+
+    modal.querySelector('#name-modal-close')?.addEventListener('click', closeModal);
+    modal.querySelector('#cancel-new-name-btn')?.addEventListener('click', closeModal);
+    modal.querySelector('#save-new-name-btn')?.addEventListener('click', handleSave);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') handleSave();
+      if (e.key === 'Escape') closeModal();
+    });
   }
 
   private bindEvents() {
@@ -196,21 +249,21 @@ export class RetroHUD {
       this.onOpenProfile();
     });
 
-    document.getElementById('dock-btn-profile')?.addEventListener('click', () => {
-      audioEngine.playClick();
-      this.onOpenProfile();
+    document.getElementById('hud-edit-name-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      audioEngine.playPop();
+      this.promptChangeName();
     });
 
-    document.getElementById('dock-btn-nav')?.addEventListener('click', () => {
+    document.getElementById('dock-btn-world')?.addEventListener('click', () => {
       audioEngine.playClick();
       this.onOpenNavigator();
     });
 
-    document.getElementById('dock-btn-my-unitz')?.addEventListener('click', () => {
-      audioEngine.playClick();
-      this.unitzManager.changeRoom('personal_penthouse', this.player);
+    document.getElementById('dock-btn-penthouse')?.addEventListener('click', () => {
+      audioEngine.playPop();
+      this.unitzManager.switchRoom('personal_penthouse');
       this.updateRoomTitle(this.unitzManager.currentRoom.name);
-      audioEngine.startBackgroundMusic(0);
     });
 
     document.getElementById('dock-btn-wardrobe')?.addEventListener('click', () => {
@@ -218,9 +271,9 @@ export class RetroHUD {
       this.onOpenWardrobe();
     });
 
-    document.getElementById('dock-btn-color-wheel')?.addEventListener('click', () => {
+    document.getElementById('dock-btn-colors')?.addEventListener('click', () => {
       audioEngine.playClick();
-      this.onOpenWardrobe();
+      this.onOpenColorWheel();
     });
 
     document.getElementById('dock-btn-shop')?.addEventListener('click', () => {
@@ -230,8 +283,6 @@ export class RetroHUD {
 
     document.getElementById('dock-btn-build')?.addEventListener('click', () => {
       audioEngine.playClick();
-      const btn = document.getElementById('dock-btn-build');
-      btn?.classList.toggle('active');
       this.onToggleBuildMode();
     });
 
@@ -240,14 +291,19 @@ export class RetroHUD {
       this.onToggleEmotes();
     });
 
-    const chatInput = document.getElementById('hud-chat-input') as HTMLInputElement;
-    const sendBtn = document.getElementById('hud-chat-send');
+    document.getElementById('dock-btn-profile')?.addEventListener('click', () => {
+      audioEngine.playClick();
+      this.onOpenProfile();
+    });
+
+    // Chat Bar Input
+    const chatInput = document.getElementById('chat-input-field') as HTMLInputElement;
+    const sendBtn = document.getElementById('chat-send-btn');
 
     const handleSend = () => {
       if (chatInput && chatInput.value.trim().length > 0) {
-        const msg = chatInput.value.trim();
+        this.onSendChatMessage(chatInput.value.trim());
         chatInput.value = '';
-        this.onSendChatMessage(msg);
       }
     };
 
@@ -258,26 +314,24 @@ export class RetroHUD {
       }
     });
 
-    const musicBtn = document.getElementById('hud-music-btn');
-    const musicLabel = document.getElementById('hud-music-label');
-    musicBtn?.addEventListener('click', () => {
-      const nextName = audioEngine.nextTrack();
-      if (musicLabel) musicLabel.textContent = nextName.split(' ')[0] + ' Track';
+    // Music & Fullscreen
+    document.getElementById('hud-music-btn')?.addEventListener('click', () => {
+      const trackName = audioEngine.nextTrack();
+      const label = document.getElementById('hud-music-label');
+      if (label) label.textContent = trackName.split(' ')[0];
     });
 
-    const muteBtn = document.getElementById('hud-mute-btn');
-    const muteIcon = document.getElementById('hud-mute-icon');
-    muteBtn?.addEventListener('click', () => {
+    document.getElementById('hud-mute-btn')?.addEventListener('click', () => {
       const muted = audioEngine.toggleMute();
-      if (muteIcon) muteIcon.textContent = muted ? '🔇' : '🔊';
+      const icon = document.getElementById('hud-mute-icon');
+      if (icon) icon.textContent = muted ? '🔇' : '🔊';
     });
 
-    const fsBtn = document.getElementById('hud-fullscreen-btn');
-    fsBtn?.addEventListener('click', () => {
+    document.getElementById('hud-fullscreen-btn')?.addEventListener('click', () => {
       if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen();
+        document.documentElement.requestFullscreen().catch(() => {});
       } else {
-        document.exitFullscreen();
+        document.exitFullscreen().catch(() => {});
       }
     });
   }
