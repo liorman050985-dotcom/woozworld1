@@ -80,6 +80,13 @@ export class WardrobeModal {
                 <button class="wardrobe-tab ${this.currentCategory === 'back' ? 'active' : ''}" data-cat="back">Wings</button>
               </div>
 
+              <!-- Gender Sub-Filter -->
+              <div style="display:flex; gap:6px; margin-bottom:8px;">
+                <button class="wardrobe-gender-btn ${this.currentGenderFilter === 'all' ? 'active' : ''}" data-gender="all" style="padding:3px 10px; border-radius:12px; font-size:11px; font-weight:800; background:${this.currentGenderFilter === 'all' ? '#00e5ff' : '#1e3352'}; color:${this.currentGenderFilter === 'all' ? '#000' : '#fff'}; border:1px solid #00bcd4; cursor:pointer;">🌟 All Styles</button>
+                <button class="wardrobe-gender-btn ${this.currentGenderFilter === 'm' ? 'active' : ''}" data-gender="m" style="padding:3px 10px; border-radius:12px; font-size:11px; font-weight:800; background:${this.currentGenderFilter === 'm' ? '#00e5ff' : '#1e3352'}; color:${this.currentGenderFilter === 'm' ? '#000' : '#fff'}; border:1px solid #00bcd4; cursor:pointer;">👦 Boys / Guy</button>
+                <button class="wardrobe-gender-btn ${this.currentGenderFilter === 'f' ? 'active' : ''}" data-gender="f" style="padding:3px 10px; border-radius:12px; font-size:11px; font-weight:800; background:${this.currentGenderFilter === 'f' ? '#00e5ff' : '#1e3352'}; color:${this.currentGenderFilter === 'f' ? '#000' : '#fff'}; border:1px solid #00bcd4; cursor:pointer;">👧 Girls / Chic</button>
+              </div>
+
               <!-- Clothing Item Grid -->
               <div class="wardrobe-items-grid" id="wardrobe-items-grid" style="max-height:160px;">
                 ${this.renderItemsGrid()}
@@ -129,14 +136,21 @@ export class WardrobeModal {
     this.drawColorWheel();
   }
 
+  private currentGenderFilter: 'all' | 'm' | 'f' = 'all';
+
   private renderItemsGrid(): string {
-    const items = CLOTHING_CATALOG.filter(c => c.category === this.currentCategory);
+    const items = CLOTHING_CATALOG.filter(c => 
+      c.category === this.currentCategory && 
+      (this.currentGenderFilter === 'all' || !c.gender || c.gender === 'all' || c.gender === this.currentGenderFilter)
+    );
     return items.map(item => {
       const isSelected = this.isItemSelected(item);
+      const genderBadge = item.gender === 'm' ? '👦' : (item.gender === 'f' ? '👧' : '✨');
       return `
-        <div class="clothing-card ${isSelected ? 'selected' : ''}" data-id="${item.id}">
+        <div class="clothing-card ${isSelected ? 'selected' : ''}" data-id="${item.id}" title="${item.name}">
           <div class="clothing-thumb">
             <span style="font-size:24px;">${this.getCategoryIcon(item.category)}</span>
+            <span style="position:absolute; top:2px; right:4px; font-size:10px;">${genderBadge}</span>
           </div>
           <span class="clothing-name" title="${item.name}">${item.name}</span>
         </div>
@@ -273,6 +287,17 @@ export class WardrobeModal {
         const cat = (e.currentTarget as HTMLElement).dataset.cat as ClothingItem['category'];
         if (cat) {
           this.currentCategory = cat;
+          this.render();
+        }
+      });
+    });
+
+    document.querySelectorAll('.wardrobe-gender-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        audioEngine.playPop();
+        const g = (e.currentTarget as HTMLElement).dataset.gender as 'all' | 'm' | 'f';
+        if (g) {
+          this.currentGenderFilter = g;
           this.render();
         }
       });
