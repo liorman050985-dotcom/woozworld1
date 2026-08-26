@@ -420,15 +420,98 @@ export class ThreeWorldEngine {
     return avatar;
   }
 
+  public showSpeechBubble3D(senderId: string, text: string) {
+    let targetAvatar: THREE.Group | undefined;
+    if (senderId === this.multiplayer.myId || senderId === this.player.id) {
+      targetAvatar = this.localAvatarGroup;
+    } else {
+      targetAvatar = this.remoteAvatarGroups.get(senderId);
+    }
+
+    if (!targetAvatar) return;
+
+    // Remove existing bubble if any
+    const oldBubble = targetAvatar.getObjectByName('speechBubble');
+    if (oldBubble) targetAvatar.remove(oldBubble);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 384;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d')!;
+
+    // Drop shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath();
+    ctx.roundRect(14, 14, 356, 84, 22);
+    ctx.fill();
+
+    // Bubble body (glossy white gradient)
+    const grad = ctx.createLinearGradient(0, 10, 0, 94);
+    grad.addColorStop(0, '#ffffff');
+    grad.addColorStop(1, '#f0fcfc');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.roundRect(10, 10, 356, 84, 22);
+    ctx.fill();
+
+    // Border
+    ctx.strokeStyle = '#00bcd4';
+    ctx.lineWidth = 4;
+    ctx.stroke();
+
+    // Tail
+    ctx.fillStyle = '#f0fcfc';
+    ctx.beginPath();
+    ctx.moveTo(180, 94);
+    ctx.lineTo(192, 114);
+    ctx.lineTo(204, 94);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#00bcd4';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // Text
+    ctx.fillStyle = '#0f172a';
+    ctx.font = 'bold 22px sans-serif';
+    ctx.textAlign = 'center';
+
+    let displayTxt = text;
+    if (displayTxt.length > 28) displayTxt = displayTxt.substring(0, 26) + '...';
+    ctx.fillText(displayTxt, 192, 58);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true });
+    const sprite = new THREE.Sprite(spriteMat);
+    sprite.name = 'speechBubble';
+    sprite.position.set(0, 3.6, 0);
+    sprite.scale.set(3.4, 1.15, 1);
+    targetAvatar.add(sprite);
+
+    // Auto remove after 5.5s
+    setTimeout(() => {
+      if (targetAvatar) {
+        targetAvatar.remove(sprite);
+      }
+    }, 5500);
+  }
+
   public update(deltaTime: number) {
     const room = this.unitzManager.currentRoom;
 
-    // 1. Update Local Player 3D Position & Animation
+    // 1. Update Local Player 3D Position, Crouch & Sprint Animation
     const targetX = (this.player.gx - room.width / 2) * 2;
     const targetZ = (this.player.gy - room.height / 2) * 2;
     const targetY = 0.2 + (this.player.gz || 0) * 0.05;
 
-    this.localAvatarGroup.position.lerp(new THREE.Vector3(targetX, targetY, targetZ), Math.min(1, deltaTime * 12));
+    this.localAvatarGroup.position.lerp(new THREE.Vector3(targetX, targetY, targetZ), Math.min(1, deltaTime * 14));
+
+    // Crouch Scaling
+    if (this.player.isCrouching) {
+      this.localAvatarGroup.scale.set(1.0, 0.65, 1.0);
+    } else {
+      this.localAvatarGroup.scale.set(1.0, 1.0, 1.0);
+    }
 
     // Calculate heading angle
     const dirAngles = [
@@ -443,19 +526,21 @@ export class ThreeWorldEngine {
     ];
     this.localAvatarGroup.rotation.y = dirAngles[this.player.direction] || 0;
 
-    // Walking leg/arm swing
+    // Walking / Sprinting leg/arm swing
     const isMoving = this.player.isMoving;
-    const animPhase = this.player.animFrame * 0.25;
+    const speedMultiplier = this.player.isSprinting ? 2.2 : 1.0;
+    const animPhase = this.player.animFrame * 0.25 * speedMultiplier;
     const armL = this.localAvatarGroup.getObjectByName('armL');
     const armR = this.localAvatarGroup.getObjectByName('armR');
     const legL = this.localAvatarGroup.getObjectByName('legL');
     const legR = this.localAvatarGroup.getObjectByName('legR');
 
     if (isMoving) {
-      if (armL) armL.rotation.x = Math.sin(animPhase) * 0.6;
-      if (armR) armR.rotation.x = -Math.sin(animPhase) * 0.6;
-      if (legL) legL.rotation.x = -Math.sin(animPhase) * 0.6;
-      if (legR) legR.rotation.x = Math.sin(animPhase) * 0.6;
+      const swingAmp = this.player.isSprinting ? 0.9 : 0.6;
+      if (armL) armL.rotation.x = Math.sin(animPhase) * swingAmp;
+      if (armR) armR.rotation.x = -Math.sin(animPhase) * swingAmp;
+      if (legL) legL.rotation.x = -Math.sin(animPhase) * swingAmp;
+      if (legR) legR.rotation.x = Math.sin(animPhase) * swingAmp;
     } else {
       if (armL) armL.rotation.x = 0;
       if (armR) armR.rotation.x = 0;

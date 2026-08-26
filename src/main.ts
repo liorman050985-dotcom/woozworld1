@@ -210,6 +210,7 @@ class WoozOfflineGame {
 
     this.multiplayer.onPlayerChat = (senderId, name, text, worldX, worldY) => {
       this.chatBubbleManager.addBubble(senderId, name, text, worldX, worldY, undefined, false);
+      this.threeEngine.showSpeechBubble3D(senderId, text);
     };
 
     this.multiplayer.onConnectionCountChange = (count) => {
@@ -251,6 +252,7 @@ class WoozOfflineGame {
 
     this.hud.onSendChatMessage = (text) => {
       this.chatBubbleManager.addBubble(this.player.id, this.player.name, text, 0, 0, undefined, true);
+      this.threeEngine.showSpeechBubble3D(this.player.id, text);
       this.multiplayer.broadcast({
         type: 'chat',
         senderId: this.multiplayer.myId,
@@ -370,6 +372,29 @@ class WoozOfflineGame {
 
   private bindKeyboardShortcuts() {
     window.addEventListener('keydown', (e) => {
+      // Focus Chat on Enter
+      if (e.key === 'Enter') {
+        const activeEl = document.activeElement?.tagName;
+        if (activeEl !== 'INPUT' && activeEl !== 'TEXTAREA') {
+          e.preventDefault();
+          const chatInput = document.getElementById('chat-input-field') as HTMLInputElement;
+          chatInput?.focus();
+          return;
+        }
+      }
+
+      // Crouch (Control)
+      if (e.key === 'Control') {
+        this.player.isCrouching = true;
+        this.player.moveSpeed = 1.8;
+      }
+
+      // Sprint / Run (Shift)
+      if (e.key === 'Shift') {
+        this.player.isSprinting = true;
+        this.player.moveSpeed = 6.2;
+      }
+
       const activeEl = document.activeElement?.tagName;
       if (activeEl === 'INPUT' || activeEl === 'TEXTAREA') return;
 
@@ -397,6 +422,14 @@ class WoozOfflineGame {
     });
 
     window.addEventListener('keyup', (e) => {
+      if (e.key === 'Shift') {
+        this.player.isSprinting = false;
+        this.player.moveSpeed = this.player.isCrouching ? 1.8 : 3.5;
+      }
+      if (e.key === 'Control') {
+        this.player.isCrouching = false;
+        this.player.moveSpeed = this.player.isSprinting ? 6.2 : 3.5;
+      }
       this.keysPressed.delete(e.key.toLowerCase());
     });
   }

@@ -32,6 +32,8 @@ export class Player {
   public path: { x: number; y: number }[] = [];
   public moveSpeed: number = 3.5;
   public isMoving: boolean = false;
+  public isCrouching: boolean = false;
+  public isSprinting: boolean = false;
   private subTileProgress: number = 0;
   public sittingOnFurnitureId: string | null = null;
 
