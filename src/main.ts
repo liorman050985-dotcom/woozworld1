@@ -207,23 +207,44 @@ class WoozOfflineGame {
       } else {
         this.unitzManager.hoveredTile = null;
       }
+
+      // Check if mouse is hovering over ANY avatar body (head, chest, legs, name tag)
+      let isHoveringAvatar = false;
+      for (const rPlayer of this.multiplayer.remotePlayers.values()) {
+        const dx = Math.abs(world.x - rPlayer.screenPos.x);
+        const dy = world.y - rPlayer.screenPos.y;
+        if (dx <= 32 && dy >= -95 && dy <= 15) {
+          isHoveringAvatar = true;
+          break;
+        }
+      }
+      if (!isHoveringAvatar) {
+        for (const npc of this.unitzManager.currentRoom.npcs) {
+          const dx = Math.abs(world.x - npc.screenPos.x);
+          const dy = world.y - npc.screenPos.y;
+          if (dx <= 32 && dy >= -95 && dy <= 15) {
+            isHoveringAvatar = true;
+            break;
+          }
+        }
+      }
+      this.canvas.style.cursor = isHoveringAvatar ? 'pointer' : (this.unitzManager.isBuildMode ? 'crosshair' : 'default');
     });
 
     this.canvas.addEventListener('click', (e) => {
       const world = this.camera.screenToWorld(e.clientX, e.clientY, this.canvas.width, this.canvas.height);
       const grid = IsometricGrid.screenToGrid(world.x, world.y);
 
-      if (
-        grid.gx < 0 ||
-        grid.gx >= this.unitzManager.currentRoom.width ||
-        grid.gy < 0 ||
-        grid.gy >= this.unitzManager.currentRoom.height
-      ) {
-        return;
-      }
-
       // BUILD MODE LOGIC
       if (this.unitzManager.isBuildMode) {
+        if (
+          grid.gx < 0 ||
+          grid.gx >= this.unitzManager.currentRoom.width ||
+          grid.gy < 0 ||
+          grid.gy >= this.unitzManager.currentRoom.height
+        ) {
+          return;
+        }
         if (this.unitzManager.selectedBuildDefId) {
           // Place furniture
           const placed = this.unitzManager.placeFurniture(this.unitzManager.selectedBuildDefId, grid.gx, grid.gy);
@@ -245,85 +266,50 @@ class WoozOfflineGame {
       }
 
       // REGULAR GAMEPLAY MODE LOGIC
-      // 1. Check if clicked an NPC
-      const clickedNPC = this.unitzManager.getNPCAt(grid.gx, grid.gy);
-      if (clickedNPC) {
-        audioEngine.playClick();
-        this.contextMenu.openFor(
-          { name: clickedNPC.name, role: clickedNPC.role },
-          e.clientX,
-          e.clientY,
-          (action, name) => {
-            if (action === 'profile' || action === 'trade') {
-              if (clickedNPC.dialogueTreeId) {
-                this.dialogueBox.openDialogue(clickedNPC.dialogueTreeId, (act) => {
-                  if (act === 'startFashion') this.fashionMinigame.start(() => {});
-                  else if (act === 'startTrivia') this.triviaMinigame.start(() => {});
-                  else if (act === 'changeMusic') {
-                    const tName = audioEngine.nextTrack();
-                    this.hud.updateRoomTitle(`${this.unitzManager.currentRoom.name} [♫ ${tName.split(' ')[0]}]`);
-                  }
-                });
-              } else {
-                clickedNPC.speak(`Hey! Nice to meet you! ✨`);
-              }
-            } else if (action === 'whisper') {
-              clickedNPC.speak(`*whispers to ${this.player.name}* You rock! 💖`);
-            } else if (action === 'wave') {
-              this.player.setAnimation('wave');
-              clickedNPC.speak(`*waves back happily* 👋`);
-            } else if (action === 'friend') {
-              audioEngine.playEmoteChime();
-              clickedNPC.speak(`Added to your Besties list! ⭐`);
-            }
-          }
-        );
-        return;
-      }
-
-      // 2. Check if clicked a REAL REMOTE PLAYER
-      let clickedRemotePlayer: any = null;
+      // 1. Check Full-Body Hitbox for REAL REMOTE PLAYERS (Head, face, hair, body, legs, feet, name tag)
+      let hitRemotePlayer: any = null;
       for (const rPlayer of this.multiplayer.remotePlayers.values()) {
-        const dist = Math.hypot(rPlayer.gx - grid.gx, rPlayer.gy - grid.gy);
-        if (dist <= 1.2 || (Math.round(rPlayer.gx) === grid.gx && Math.round(rPlayer.gy) === grid.gy)) {
-          clickedRemotePlayer = rPlayer;
+        const dx = Math.abs(world.x - rPlayer.screenPos.x);
+        const dy = world.y - rPlayer.screenPos.y;
+        if (dx <= 32 && dy >= -95 && dy <= 15) {
+          hitRemotePlayer = rPlayer;
           break;
         }
       }
 
-      if (clickedRemotePlayer) {
+      if (hitRemotePlayer) {
         audioEngine.playClick();
         this.contextMenu.openFor(
-          { name: clickedRemotePlayer.name, level: clickedRemotePlayer.level, isPlayer: true },
+          { name: hitRemotePlayer.name, level: hitRemotePlayer.level, isPlayer: true },
           e.clientX,
           e.clientY,
           (action, name) => {
             if (action === 'profile') {
               audioEngine.playFanfare();
               this.profileModal.open({
-                name: clickedRemotePlayer.name,
-                level: clickedRemotePlayer.level,
-                customization: clickedRemotePlayer.customization,
+                name: hitRemotePlayer.name,
+                level: hitRemotePlayer.level,
+                customization: hitRemotePlayer.customization,
                 isSelf: false,
                 status: "Live Resident in Woozworld! 🌟",
                 wooz: 999999,
                 beex: 999999
               });
             } else if (action === 'whisper') {
-              const msg = prompt(`Send a private whisper message to ${clickedRemotePlayer.name}:`);
+              const msg = prompt(`Send a private whisper message to ${hitRemotePlayer.name}:`);
               if (msg && msg.trim()) {
-                this.chatBubbleManager.addBubble(this.player.id, this.player.name, `*whispers to ${clickedRemotePlayer.name}* ${msg.trim()}`, this.player.screenPos.x, this.player.screenPos.y, '#e1bee7', true);
+                this.chatBubbleManager.addBubble(this.player.id, this.player.name, `*whispers to ${hitRemotePlayer.name}* ${msg.trim()}`, this.player.screenPos.x, this.player.screenPos.y, '#e1bee7', true);
                 this.multiplayer.broadcast({
                   type: 'chat',
                   senderId: this.multiplayer.myId,
                   roomId: this.unitzManager.currentRoomId,
                   name: this.player.name,
-                  text: `*whispers to ${clickedRemotePlayer.name}* ${msg.trim()}`
+                  text: `*whispers to ${hitRemotePlayer.name}* ${msg.trim()}`
                 });
               }
             } else if (action === 'wave') {
               this.player.setAnimation('wave');
-              this.chatBubbleManager.addBubble(this.player.id, this.player.name, `👋 Waves at ${clickedRemotePlayer.name}!`, this.player.screenPos.x, this.player.screenPos.y, '#ffd54f', true);
+              this.chatBubbleManager.addBubble(this.player.id, this.player.name, `👋 Waves at ${hitRemotePlayer.name}!`, this.player.screenPos.x, this.player.screenPos.y, '#ffd54f', true);
               this.multiplayer.broadcast({
                 type: 'emote',
                 senderId: this.multiplayer.myId,
@@ -332,13 +318,67 @@ class WoozOfflineGame {
               });
             } else if (action === 'friend') {
               audioEngine.playEmoteChime();
-              this.chatBubbleManager.addBubble(this.player.id, this.player.name, `⭐ Added ${clickedRemotePlayer.name} to Besties list!`, this.player.screenPos.x, this.player.screenPos.y, '#b2ebf2', true);
+              this.chatBubbleManager.addBubble(this.player.id, this.player.name, `⭐ Added ${hitRemotePlayer.name} to Besties list!`, this.player.screenPos.x, this.player.screenPos.y, '#b2ebf2', true);
             } else if (action === 'trade') {
               audioEngine.playPop();
-              this.chatBubbleManager.addBubble(this.player.id, this.player.name, `🤝 Sent trade request to ${clickedRemotePlayer.name}!`, this.player.screenPos.x, this.player.screenPos.y, '#ffe082', true);
+              this.chatBubbleManager.addBubble(this.player.id, this.player.name, `🤝 Sent trade request to ${hitRemotePlayer.name}!`, this.player.screenPos.x, this.player.screenPos.y, '#ffe082', true);
             }
           }
         );
+        return;
+      }
+
+      // 2. Check Full-Body Hitbox for NPCs (Head, body, name tag)
+      let hitNPC: any = null;
+      for (const npc of this.unitzManager.currentRoom.npcs) {
+        const dx = Math.abs(world.x - npc.screenPos.x);
+        const dy = world.y - npc.screenPos.y;
+        if (dx <= 32 && dy >= -95 && dy <= 15) {
+          hitNPC = npc;
+          break;
+        }
+      }
+
+      if (hitNPC) {
+        audioEngine.playClick();
+        this.contextMenu.openFor(
+          { name: hitNPC.name, role: hitNPC.role },
+          e.clientX,
+          e.clientY,
+          (action, name) => {
+            if (action === 'profile' || action === 'trade') {
+              if (hitNPC.dialogueTreeId) {
+                this.dialogueBox.openDialogue(hitNPC.dialogueTreeId, (act) => {
+                  if (act === 'startFashion') this.fashionMinigame.start(() => {});
+                  else if (act === 'startTrivia') this.triviaMinigame.start(() => {});
+                  else if (act === 'changeMusic') {
+                    const tName = audioEngine.nextTrack();
+                    this.hud.updateRoomTitle(`${this.unitzManager.currentRoom.name} [♫ ${tName.split(' ')[0]}]`);
+                  }
+                });
+              } else {
+                hitNPC.speak(`Hey! Nice to meet you! ✨`);
+              }
+            } else if (action === 'whisper') {
+              hitNPC.speak(`*whispers to ${this.player.name}* You rock! 💖`);
+            } else if (action === 'wave') {
+              this.player.setAnimation('wave');
+              hitNPC.speak(`*waves back happily* 👋`);
+            } else if (action === 'friend') {
+              audioEngine.playEmoteChime();
+              hitNPC.speak(`Added to your Besties list! ⭐`);
+            }
+          }
+        );
+        return;
+      }
+
+      if (
+        grid.gx < 0 ||
+        grid.gx >= this.unitzManager.currentRoom.width ||
+        grid.gy < 0 ||
+        grid.gy >= this.unitzManager.currentRoom.height
+      ) {
         return;
       }
 
