@@ -366,10 +366,19 @@ class WoozOfflineGame {
     };
   }
 
+  private keysPressed: Set<string> = new Set();
+
   private bindKeyboardShortcuts() {
     window.addEventListener('keydown', (e) => {
       const activeEl = document.activeElement?.tagName;
       if (activeEl === 'INPUT' || activeEl === 'TEXTAREA') return;
+
+      const keyLower = e.key.toLowerCase();
+      if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'w', 'a', 's', 'd'].includes(keyLower)) {
+        e.preventDefault();
+        this.keysPressed.add(keyLower);
+        return;
+      }
 
       if (e.key === 'c' || e.key === 'C') {
         this.wardrobeModal.open();
@@ -386,6 +395,42 @@ class WoozOfflineGame {
         this.profileModal.open();
       }
     });
+
+    window.addEventListener('keyup', (e) => {
+      this.keysPressed.delete(e.key.toLowerCase());
+    });
+  }
+
+  private handleKeyboardMovement() {
+    if (this.keysPressed.size === 0) return;
+    if (this.player.isMoving && this.player.path.length > 0) return;
+
+    let dx = 0;
+    let dy = 0;
+
+    if (this.keysPressed.has('w') || this.keysPressed.has('arrowup')) dy -= 1;
+    if (this.keysPressed.has('s') || this.keysPressed.has('arrowdown')) dy += 1;
+    if (this.keysPressed.has('a') || this.keysPressed.has('arrowleft')) dx -= 1;
+    if (this.keysPressed.has('d') || this.keysPressed.has('arrowright')) dx += 1;
+
+    if (dx === 0 && dy === 0) return;
+
+    const nextGx = Math.round(this.player.gx) + dx;
+    const nextGy = Math.round(this.player.gy) + dy;
+
+    if (this.unitzManager.isTileWalkable(nextGx, nextGy)) {
+      this.player.setPath([{ x: nextGx, y: nextGy }]);
+      audioEngine.playStep();
+      this.multiplayer.broadcast({
+        type: 'move',
+        senderId: this.multiplayer.myId,
+        roomId: this.unitzManager.currentRoomId,
+        gx: nextGx,
+        gy: nextGy,
+        path: [{ x: nextGx, y: nextGy }],
+        direction: this.player.direction
+      });
+    }
   }
 
   private gameLoop(currentTime: number) {
@@ -393,12 +438,15 @@ class WoozOfflineGame {
     const deltaTime = Math.min(0.1, (currentTime - this.lastTime) / 1000);
     this.lastTime = currentTime;
 
-    // 1. Update entities & multiplayer mechanics
+    // 1. Handle Keyboard Movement
+    this.handleKeyboardMovement();
+
+    // 2. Update entities & multiplayer mechanics
     this.player.update(deltaTime, () => audioEngine.playStep());
     this.multiplayer.update(deltaTime);
     this.chatBubbleManager.update(deltaTime);
 
-    // 2. Render 3D Three.js WebGL Frame
+    // 3. Render 3D Three.js WebGL Frame
     this.threeEngine.update(deltaTime);
 
     requestAnimationFrame((t) => this.gameLoop(t));
