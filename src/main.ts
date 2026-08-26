@@ -281,6 +281,67 @@ class WoozOfflineGame {
         return;
       }
 
+      // 2. Check if clicked a REAL REMOTE PLAYER
+      let clickedRemotePlayer: any = null;
+      for (const rPlayer of this.multiplayer.remotePlayers.values()) {
+        const dist = Math.hypot(rPlayer.gx - grid.gx, rPlayer.gy - grid.gy);
+        if (dist <= 1.2 || (Math.round(rPlayer.gx) === grid.gx && Math.round(rPlayer.gy) === grid.gy)) {
+          clickedRemotePlayer = rPlayer;
+          break;
+        }
+      }
+
+      if (clickedRemotePlayer) {
+        audioEngine.playClick();
+        this.contextMenu.openFor(
+          { name: clickedRemotePlayer.name, level: clickedRemotePlayer.level, isPlayer: true },
+          e.clientX,
+          e.clientY,
+          (action, name) => {
+            if (action === 'profile') {
+              audioEngine.playFanfare();
+              this.profileModal.open({
+                name: clickedRemotePlayer.name,
+                level: clickedRemotePlayer.level,
+                customization: clickedRemotePlayer.customization,
+                isSelf: false,
+                status: "Live Resident in Woozworld! 🌟",
+                wooz: 999999,
+                beex: 999999
+              });
+            } else if (action === 'whisper') {
+              const msg = prompt(`Send a private whisper message to ${clickedRemotePlayer.name}:`);
+              if (msg && msg.trim()) {
+                this.chatBubbleManager.addBubble(this.player.id, this.player.name, `*whispers to ${clickedRemotePlayer.name}* ${msg.trim()}`, this.player.screenPos.x, this.player.screenPos.y, '#e1bee7', true);
+                this.multiplayer.broadcast({
+                  type: 'chat',
+                  senderId: this.multiplayer.myId,
+                  roomId: this.unitzManager.currentRoomId,
+                  name: this.player.name,
+                  text: `*whispers to ${clickedRemotePlayer.name}* ${msg.trim()}`
+                });
+              }
+            } else if (action === 'wave') {
+              this.player.setAnimation('wave');
+              this.chatBubbleManager.addBubble(this.player.id, this.player.name, `👋 Waves at ${clickedRemotePlayer.name}!`, this.player.screenPos.x, this.player.screenPos.y, '#ffd54f', true);
+              this.multiplayer.broadcast({
+                type: 'emote',
+                senderId: this.multiplayer.myId,
+                roomId: this.unitzManager.currentRoomId,
+                animation: 'wave'
+              });
+            } else if (action === 'friend') {
+              audioEngine.playEmoteChime();
+              this.chatBubbleManager.addBubble(this.player.id, this.player.name, `⭐ Added ${clickedRemotePlayer.name} to Besties list!`, this.player.screenPos.x, this.player.screenPos.y, '#b2ebf2', true);
+            } else if (action === 'trade') {
+              audioEngine.playPop();
+              this.chatBubbleManager.addBubble(this.player.id, this.player.name, `🤝 Sent trade request to ${clickedRemotePlayer.name}!`, this.player.screenPos.x, this.player.screenPos.y, '#ffe082', true);
+            }
+          }
+        );
+        return;
+      }
+
       // 2. Check if clicked interactive furniture
       const clickedFurn = this.unitzManager.getFurnitureAt(grid.gx, grid.gy);
       if (clickedFurn) {

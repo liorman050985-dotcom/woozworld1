@@ -1,20 +1,46 @@
 import { Player } from '../entities/Player';
-import { AvatarRenderer } from '../entities/AvatarRenderer';
+import { AvatarRenderer, AvatarCustomization } from '../entities/AvatarRenderer';
 import { audioEngine } from '../engine/AudioEngine';
 
+export interface ProfileData {
+  name: string;
+  level: number;
+  customization: AvatarCustomization;
+  isSelf: boolean;
+  status?: string;
+  wooz?: number;
+  beex?: number;
+}
+
 export class ProfileModal {
-  private player: Player;
+  private selfPlayer: Player;
+  private currentProfile: ProfileData;
   private container: HTMLElement | null = null;
   private canvas: HTMLCanvasElement | null = null;
   private ctx: CanvasRenderingContext2D | null = null;
   private onNameChanged: (newName: string) => void = () => {};
 
   constructor(player: Player, onNameChanged: (newName: string) => void = () => {}) {
-    this.player = player;
+    this.selfPlayer = player;
     this.onNameChanged = onNameChanged;
+    this.currentProfile = this.getSelfProfileData();
   }
 
-  public open() {
+  private getSelfProfileData(): ProfileData {
+    return {
+      name: this.selfPlayer.name,
+      level: this.selfPlayer.level,
+      customization: this.selfPlayer.customization,
+      isSelf: true,
+      status: "Rocking the classic Woozworld retro world! ✨",
+      wooz: this.selfPlayer.wooz,
+      beex: this.selfPlayer.beex
+    };
+  }
+
+  public open(targetData?: ProfileData) {
+    this.currentProfile = targetData || this.getSelfProfileData();
+
     let backdrop = document.getElementById('profile-modal-backdrop');
     if (!backdrop) {
       backdrop = document.createElement('div');
@@ -35,12 +61,13 @@ export class ProfileModal {
 
   private render() {
     if (!this.container) return;
+    const p = this.currentProfile;
 
     this.container.innerHTML = `
       <div class="retro-modal" style="width: 620px;">
         <div class="modal-header">
           <div class="modal-title">
-            <span>⭐</span> WoozIn Profile Card
+            <span>⭐</span> WoozIn: ${p.name}'s Profile
           </div>
           <button class="modal-close-btn" id="profile-close-btn">✕</button>
         </div>
@@ -51,39 +78,44 @@ export class ProfileModal {
             <canvas id="profile-avatar-canvas" width="180" height="260"></canvas>
           </div>
 
-          <!-- Right: Player Stats, Name Input & Badges -->
+          <!-- Right: Player Stats & Badges -->
           <div style="flex:1; display:flex; flex-direction:column; gap:12px;">
             <div style="display:flex; justify-content:space-between; align-items:center;">
               <div style="display:flex; align-items:center; gap:6px;">
-                <input
-                  type="text"
-                  id="profile-name-input"
-                  value="${this.player.name}"
-                  maxlength="16"
-                  style="background:#101c2e; border:2px solid #00bcd4; border-radius:8px; padding:4px 8px; color:#fff; font-size:18px; font-weight:900; width:170px;"
-                  title="Click to edit your username"
-                />
-                <button class="builder-tool-btn" id="profile-save-name-btn" style="padding:4px 8px; font-size:12px; background:#00e676; color:#000;">
-                  Save
-                </button>
+                ${p.isSelf ? `
+                  <input
+                    type="text"
+                    id="profile-name-input"
+                    value="${p.name}"
+                    maxlength="16"
+                    style="background:#101c2e; border:2px solid #00bcd4; border-radius:8px; padding:4px 8px; color:#fff; font-size:18px; font-weight:900; width:170px;"
+                    title="Click to edit your username"
+                  />
+                  <button class="builder-tool-btn" id="profile-save-name-btn" style="padding:4px 8px; font-size:12px; background:#00e676; color:#000; font-weight:bold;">
+                    Save
+                  </button>
+                ` : `
+                  <span style="font-size:20px; font-weight:900; color:#00e5ff;">${p.name}</span>
+                  <span style="font-size:14px; color:#ffd700;">👑</span>
+                `}
               </div>
-              <span class="level-star" style="font-size:13px; padding:4px 10px;">Lv.${this.player.level}</span>
+              <span class="level-star" style="font-size:13px; padding:4px 10px;">Lv.${p.level}</span>
             </div>
 
             <!-- Status message -->
             <div style="background:#132034; border:1px solid #2d476e; border-radius:10px; padding:8px 12px; font-size:13px; color:#b0c4de;">
-              💬 Status: <em>"Rocking the classic Woozworld retro world! ✨"</em>
+              💬 Status: <em>"${p.status || 'Hanging out in Woozworld! ✨'}"</em>
             </div>
 
             <!-- Stats grid -->
             <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:8px;">
               <div style="background:#17263d; padding:8px 10px; border-radius:8px; border:1px solid #304e78;">
                 <div style="font-size:11px; color:#78909c;">Wooz Balance</div>
-                <div style="font-size:15px; font-weight:900; color:#ffd700;">${this.player.wooz.toLocaleString()} W</div>
+                <div style="font-size:15px; font-weight:900; color:#ffd700;">${(p.wooz ?? 999999).toLocaleString()} W</div>
               </div>
               <div style="background:#17263d; padding:8px 10px; border-radius:8px; border:1px solid #304e78;">
                 <div style="font-size:11px; color:#78909c;">Beex Balance</div>
-                <div style="font-size:15px; font-weight:900; color:#00e5ff;">${this.player.beex.toLocaleString()} B</div>
+                <div style="font-size:15px; font-weight:900; color:#00e5ff;">${(p.beex ?? 999999).toLocaleString()} B</div>
               </div>
               <div style="background:#17263d; padding:8px 10px; border-radius:8px; border:1px solid #304e78;">
                 <div style="font-size:11px; color:#78909c;">Energy</div>
@@ -91,19 +123,19 @@ export class ProfileModal {
               </div>
               <div style="background:#17263d; padding:8px 10px; border-radius:8px; border:1px solid #304e78;">
                 <div style="font-size:11px; color:#78909c;">Prestige Rank</div>
-                <div style="font-size:15px; font-weight:900; color:#ff4081;">VIP Master</div>
+                <div style="font-size:15px; font-weight:900; color:#ff4081;">VIP Resident</div>
               </div>
             </div>
 
             <!-- Badges Collection -->
             <div>
-              <div style="font-size:12px; font-weight:700; color:#ffc107; margin-bottom:4px;">Unlocked Badges:</div>
+              <div style="font-size:12px; font-weight:700; color:#ffc107; margin-bottom:4px;">Resident Badges:</div>
               <div style="display:flex; gap:6px;">
                 <span style="font-size:22px;" title="Original Flash Era Pioneer">🏆</span>
                 <span style="font-size:22px;" title="Runway Fashion Master">👠</span>
                 <span style="font-size:22px;" title="VIP Unitz Architect">🏠</span>
                 <span style="font-size:22px;" title="Woozband Bestie">💖</span>
-                <span style="font-size:22px;" title="Trivia King">🎮</span>
+                <span style="font-size:22px;" title="Multiplayer Pioneer">🌐</span>
               </div>
             </div>
           </div>
@@ -125,7 +157,7 @@ export class ProfileModal {
           this.ctx,
           90,
           230,
-          this.player.customization,
+          this.currentProfile.customization,
           0,
           'pose',
           0,
@@ -141,20 +173,24 @@ export class ProfileModal {
       this.close();
     });
 
-    const saveNameBtn = document.getElementById('profile-save-name-btn');
-    const nameInput = document.getElementById('profile-name-input') as HTMLInputElement;
+    if (this.currentProfile.isSelf) {
+      const saveNameBtn = document.getElementById('profile-save-name-btn');
+      const nameInput = document.getElementById('profile-name-input') as HTMLInputElement;
 
-    const handleSave = () => {
-      if (nameInput && nameInput.value.trim().length >= 2) {
-        audioEngine.playPop();
-        this.player.setName(nameInput.value.trim());
-        this.onNameChanged(this.player.name);
-      }
-    };
+      const handleSave = () => {
+        if (nameInput && nameInput.value.trim().length >= 2) {
+          audioEngine.playPop();
+          this.selfPlayer.setName(nameInput.value.trim());
+          this.onNameChanged(this.selfPlayer.name);
+          this.currentProfile = this.getSelfProfileData();
+          this.render();
+        }
+      };
 
-    saveNameBtn?.addEventListener('click', handleSave);
-    nameInput?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') handleSave();
-    });
+      saveNameBtn?.addEventListener('click', handleSave);
+      nameInput?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') handleSave();
+      });
+    }
   }
 }
