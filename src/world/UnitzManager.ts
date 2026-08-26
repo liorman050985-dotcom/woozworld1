@@ -6,12 +6,13 @@ import { Player } from '../entities/Player';
 import { NPC } from '../entities/NPC';
 import { AvatarRenderer } from '../entities/AvatarRenderer';
 
-const ROOMS_STORAGE_KEY = 'woozoffline_saved_rooms_v3';
+const ROOMS_STORAGE_KEY = 'woozoffline_saved_rooms_v4';
 
 // Clear old legacy broken localStorage caches if present
 try {
   localStorage.removeItem('woozoffline_saved_rooms_v1');
   localStorage.removeItem('woozoffline_saved_rooms_v2');
+  localStorage.removeItem('woozoffline_saved_rooms_v3');
 } catch (e) {}
 
 export class UnitzManager {
